@@ -1,0 +1,77 @@
+[
+  {
+    "name": "type:bug",
+    "color": "1d76db",
+    "description": "type: bug"
+  },
+  {
+    "name": "type:feature",
+    "color": "1d76db",
+    "description": "type: feature"
+  },
+  {
+    "name": "type:maintenance",
+    "color": "1d76db",
+    "description": "type: maintenance"
+  },
+  {
+    "name": "type:qa",
+    "color": "1d76db",
+    "description": "type: qa"
+  },
+  {
+    "name": "type:research",
+    "color": "1d76db",
+    "description": "type: research"
+  },
+  {
+    "name": "type:tracking",
+    "color": "1d76db",
+    "description": "type: tracking"
+  },
+  {
+    "name": "priority:P0",
+    "color": "d93f0b",
+    "description": "priority: P0"
+  },
+  {
+    "name": "priority:P1",
+    "color": "d93f0b",
+    "description": "priority: P1"
+  },
+  {
+    "name": "priority:P2",
+    "color": "d93f0b",
+    "description": "priority: P2"
+  },
+  {
+    "name": "status:blocked",
+    "color": "0e8a16",
+    "description": "status: blocked"
+  },
+  {
+    "name": "status:deferred",
+    "color": "0e8a16",
+    "description": "status: deferred"
+  },
+  {
+    "name": "status:done",
+    "color": "0e8a16",
+    "description": "status: done"
+  },
+  {
+    "name": "status:in-progress",
+    "color": "0e8a16",
+    "description": "status: in-progress"
+  },
+  {
+    "name": "status:ready",
+    "color": "0e8a16",
+    "description": "status: ready"
+  },
+  {
+    "name": "status:review",
+    "color": "0e8a16",
+    "description": "status: review"
+  }
+]

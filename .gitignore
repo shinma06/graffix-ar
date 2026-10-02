@@ -63,3 +63,16 @@ fastlane/test_output
 directory_structure.txt
 
 repomix-output.txt
+
+# Agent harness: local state, credentials, and generated artifacts
+__pycache__/
+*.pyc
+.harness-local/
+.env
+.env.*
+!.env.example
+.claude/settings.local.json
+.codex/config.toml
+.mcp.json
+.cursor/mcp.json
+*.xcresult/

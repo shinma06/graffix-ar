@@ -1,0 +1,10 @@
+# Repository owner; agent session review is separately recorded in the PR.
+/CLAUDE.md @shinma06
+/AGENTS.md @shinma06
+/.github/ @shinma06
+/.githooks/ @shinma06
+/.agents/ @shinma06
+/.claude/skills/ @shinma06
+/.cursor/rules/ @shinma06
+/scripts/workflow/ @shinma06
+/docs/development/ @shinma06
