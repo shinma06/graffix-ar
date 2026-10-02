@@ -1,0 +1,27 @@
+name: CI
+on:
+  push:
+    branches: [main, develop, 'codex/**', 'claude/**', 'cursor/**', 'agent/**']
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  test:
+    name: test
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Harness checks and affected iOS build
+        run: python3 scripts/workflow/change_impact.py --event --run-tests
