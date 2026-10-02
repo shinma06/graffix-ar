@@ -397,7 +397,7 @@
 				DEVELOPMENT_TEAM = 6BM2C9CM4T;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = "/Users/shinma/workspace/Swift/AR_art/Graffix-AR/Graffix-AR/App/Info.plist";
+				INFOPLIST_FILE = "Graffix-AR/App/Info.plist";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UIRequiredDeviceCapabilities = arkit;
@@ -428,7 +428,7 @@
 				DEVELOPMENT_TEAM = 6BM2C9CM4T;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = "/Users/shinma/workspace/Swift/AR_art/Graffix-AR/Graffix-AR/App/Info.plist";
+				INFOPLIST_FILE = "Graffix-AR/App/Info.plist";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UIRequiredDeviceCapabilities = arkit;

@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "issue": 2,
+  "gui_required": false,
+  "reason": "管理・CI・自動進行基盤の導入。Info.plist の個人絶対パスのみ相対パスへ直し、署名なし Simulator ビルドで検証する。AR の実機受入は別。",
+  "cli_checks": [
+    "python3 scripts/check.py: pass (164 tests)",
+    "python3 scripts/workflow/ios_build.py: pass (Debug, arm64/x86_64, unsigned Simulator)"
+  ],
+  "cases": []
+}

@@ -1,0 +1,42 @@
+{
+  "owner": "shinma06",
+  "repository": "shinma06/graffix-ar",
+  "title": "Graffix-AR 開発マップ",
+  "visibility": "private",
+  "additional_fields": {
+    "Relationship Status": [
+      "Standalone",
+      "Has Relationship"
+    ]
+  },
+  "status_mapping": {
+    "ready": "Todo",
+    "blocked": "Todo",
+    "deferred": "Todo",
+    "in-progress": "In Progress",
+    "review": "In Progress",
+    "done": "Done"
+  },
+  "views": [
+    {
+      "name": "Now — 進行中",
+      "filter": "is:open label:status:in-progress,status:review -label:type:tracking"
+    },
+    {
+      "name": "Next — 着手候補",
+      "filter": "is:open label:status:ready -label:type:tracking"
+    },
+    {
+      "name": "Later — 依存待ち・保留",
+      "filter": "is:open label:status:blocked,status:deferred"
+    },
+    {
+      "name": "Past — 完了履歴",
+      "filter": "is:closed"
+    },
+    {
+      "name": "全体 — 親子と全Issue",
+      "filter": ""
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+name: Acceptance
+on:
+  pull_request:
+    branches: [main, develop]
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+permissions:
+  contents: read
+  pull-requests: read
+concurrency:
+  group: acceptance-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  acceptance:
+    name: Acceptance gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # Only reviewed base code runs. PR JSON is read with git show as data.
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/heads/${{ github.event.pull_request.base.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Check acceptance using the trusted base
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          # Initial adoption only: these observed base commits predate the validator.
+          # Local tests and independent review remain mandatory; no GUI pass is asserted.
+          case "$(git rev-parse HEAD):$BASE_REF:$HEAD_REF" in
+            7b55e8bff1c4583d2c1c68e7e7360e82a543ccf9:main:codex/[1-9]*-adopt-harness|4cdc460372a068ce3349badaf0068d960907998c:develop:codex/[1-9]*-sync-harness)
+              echo 'Initial harness bootstrap: independent review and test required; application acceptance not evaluated.'
+              ;;
+            *) python3 scripts/workflow/acceptance_ci.py ;;
+          esac
