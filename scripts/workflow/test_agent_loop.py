@@ -484,6 +484,21 @@ class LoopTests(unittest.TestCase):
         self.assertEqual(self.gh.merges, 1)
         self.loop.cleanup.assert_called_once()
 
+    def test_issue_feedback_invalidates_review_and_reaches_worker(self):
+        self.assertEqual(self.loop.tick(36)['phase'], 'reviewed')
+        _, state, _, comments = self.loop.load(36)
+        bound, _ = self.loop.bound(self.gh.pr(36), self.gh.issue(35), comments)
+        self.assertEqual(bound, state['binding'])  # Progress dashboard must not invalidate review.
+        feedback = 'Stop integration until the new acceptance condition is verified.'
+        self.gh.comment(35, feedback)
+        self.worker.side_effect = None
+        self.worker.return_value = report('blocked')
+        self.assertEqual(self.loop.tick(36)['phase'], 'reviewed')
+        self.assertEqual(self.worker.call_count, 2)
+        self.assertIn(feedback, self.worker.call_args.args[2]['feedback'])
+        self.assertEqual(self.loop.tick(36)['phase'], 'blocked')
+        self.assertEqual(self.gh.merges, 0)
+
     def test_standalone_issue_closes_without_parent_update(self):
         h, _, _, _ = self.loop.load(36)
         h['parent'] = None

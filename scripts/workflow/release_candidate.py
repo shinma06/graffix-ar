@@ -22,6 +22,8 @@ def sha256(path):
 def build(source, directory, scope_issue=None, platform='device', signed=False):
     if not re.fullmatch(r'[0-9a-f]{40}', source):
         raise ValueError('Full candidate SHA required')
+    if Path(git_read('rev-parse', '--show-toplevel')).resolve() != ROOT.resolve():
+        raise ValueError('Run the candidate script from its own checkout')
     if git_read('rev-parse', 'HEAD') != source or git_read('status', '--porcelain'):
         raise ValueError('Build from the clean, fixed candidate checkout')
     if scope_issue is None:

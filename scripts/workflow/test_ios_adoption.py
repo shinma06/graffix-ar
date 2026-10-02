@@ -79,6 +79,7 @@ class AdoptionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             source = 'a' * 40
             def git(*args):
+                if args == ('rev-parse', '--show-toplevel'): return str(rc.ROOT)
                 if args == ('rev-parse', 'HEAD'): return source
                 if args == ('rev-parse', 'origin/main'): return 'b' * 40
                 return ''
@@ -87,6 +88,16 @@ class AdoptionTests(unittest.TestCase):
                     rc.build(source, Path(tmp) / 'output', 12)
                 scope.assert_called_once_with('b' * 40, source, 12)
                 build.assert_not_called()
+
+    def test_candidate_rejects_another_checkout_before_creating_output(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / 'candidate'
+            with patch.object(rc, 'git_read', return_value=tmp) as git, patch.object(ios_build, 'build') as build:
+                with self.assertRaisesRegex(ValueError, 'own checkout'):
+                    rc.build('a' * 40, output)
+                git.assert_called_once_with('rev-parse', '--show-toplevel')
+                build.assert_not_called()
+                self.assertFalse(output.exists())
 
     def test_missing_protection_or_bypass_blocks_merge(self):
         gh = agent_loop.GitHub()

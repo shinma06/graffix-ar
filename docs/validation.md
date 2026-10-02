@@ -4,12 +4,12 @@
 
 | 対象 | 状態・確認方法 |
 |---|---|
-| Python 管理テスト | pass。`python3 scripts/check.py`、template 由来 6 件＋管理 engine/iOS 適合 158 件、計 164 件 |
+| Python 管理テスト | pass。`python3 scripts/check.py`、template 由来 6 件＋管理 engine/iOS 適合 160 件、計 166 件 |
 | アプリ Debug build | pass。Xcode 27.0 / 27A266a、iOS Simulator 27.0 SDK、共有 scheme Mock Up、arm64/x86_64、署名なしで実ビルド |
 | Info.plist の移植性 | 旧個人絶対パスを `Graffix-AR/App/Info.plist` に変更し、上記 build で確認 |
 | XCTest | not-required（今回アプリロジック変更なし）。現状テストソース・Testables がなく未実行 |
 | AR 実機受入 | pending。カメラ・距離精度・ARSession の実機観察は未実施 |
-| worker 起動方式 | 構成確認。インストール済み CLI help と公式仕様で使用引数を確認。回帰試験は fake worker/隔離 process を使用 |
+| worker 起動方式 | 既存の ChatGPT 認証を確認。インストール済み CLI help と公式仕様で使用引数を確認。回帰試験は fake worker/隔離 process を使用 |
 | 実モデルによる review/fix | pending。実 PR 登録・実認証・利用可能な実行者での試行は未実施 |
 | 共通 entrypoints | AGENTS/Claude symlink/Cursor rule と start/finish Skills。各クライアントの新規セッション読込は pending |
 | ローカル Git hooks | pass。既存 custom hooks がないことを確認し、`scripts/bootstrap.py` で `.githooks` を有効化 |

@@ -222,8 +222,9 @@ class Loop:
     def bound(self, pr, issue, comments):
         value = binding(pr, issue)
         # Fresh human feedback triggers a new review; machine dashboard edits do not.
-        human = [c['body'] for c in comments if c['user']['login'] == OWNER and
-                 not c['body'].startswith((HANDOFF, HANDOFF_V2, STATE))]
+        human = [c['body'] for c in comments + self.gh.comments(issue_number(pr))
+                 if c['user']['login'] == OWNER and
+                 not c['body'].startswith((HANDOFF, HANDOFF_V2, STATE, '<!-- agent-loop-progress:'))]
         inline = self.gh.pages(f'repos/{REPO}/pulls/{pr["number"]}/comments?per_page=100')
         reviews = self.gh.pages(f'repos/{REPO}/pulls/{pr["number"]}/reviews?per_page=100')
         value['feedback_hash'] = hashlib.sha256(json.dumps([human, inline, reviews], sort_keys=True).encode()).hexdigest()
