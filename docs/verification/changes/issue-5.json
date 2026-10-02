@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "issue": 5,
+  "gui_required": false,
+  "reason": "確認済みのハーネス導入・GitHub管理設定の文書と受入metadataだけを更新する。アプリ、build設定、実行コードは変更しない。",
+  "cli_checks": [
+    "python3 scripts/check.py: required before merge",
+    "git diff --check: required before merge"
+  ],
+  "cases": []
+}
