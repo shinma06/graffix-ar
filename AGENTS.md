@@ -1,64 +1,47 @@
-# Graffix-AR (rebuilt)
+# Graffix-AR
 
-This repository was rebuilt from concept in November 2026. The pre-rebuild
-Swift implementation and its development harness were removed on purpose:
-do not reference or restore pre-rebuild code, docs, or workflow conventions.
+iOS app (Shibuya Graffix AR): move the phone like a spray can to paint digital graffiti on real walls. Rust core (`core/`, crate `graffix-core`) exposed through UniFFI to a Swift shell (`Graffix-AR/`, SwiftUI + RealityKit `ARView`), iOS 27 only. Product facts: `docs/project.md`, `README.md`, `docs/concept/` (read-only source of truth).
 
-## Source of truth
+## Work
 
-- `docs/concept/` — the original SHIBUYA+FUN PROJECT deck and `VISION.md`.
-  Read-only. Product decisions come from there and from the owner, not from
-  git history.
-- `README.md` — architecture, spray model, build steps, verified/unverified.
+A Devin parent session delegates one task per child session, reviews the result and integrates it. Entire records the sessions.
 
-## Stack
+- One task → one child session → one branch `devin/<slug>` from `rebuild/concept-rust-core` → one PR into `rebuild/concept-rust-core`. Never push to `rebuild/concept-rust-core`, `main`, `master` or `develop`, never force-push, and do not merge: the parent integrates.
+- A PR is ready when both `.github/workflows/ci.yml` jobs, `Rust core (Linux)` and `iOS app (Xcode)`, are green on its head. Fix real failures; never weaken a check.
+- `rebuild/concept-rust-core` reaches `main` through PR #7, which the owner merges.
+- Stay inside the files your task names; if you must touch others, keep it minimal and say so in the PR.
+- Product and design decisions the task and the repository do not settle go to the owner: stop and ask with the options instead of guessing.
+- Report what CI verified and what it did not (on-device AR, LiDAR, haptics, UI behaviour).
 
-- Rust core in `core/` (crate `graffix-core`, UniFFI bindings) + Swift shell
-  in `Graffix-AR/` (SwiftUI + RealityKit `ARView`). iOS 27 only.
-- Computation belongs in the Rust core with unit tests; the Swift shell only
-  does I/O (ARKit, sensors, storage) and rendering.
+## Build and test
+
+```bash
+# core/ (any host): what the Linux CI job runs
+cargo test --locked
+cargo clippy --locked --all-targets --all-features -- -D warnings
+cargo check --locked --lib --target aarch64-apple-ios
+cargo check --locked --lib --target aarch64-apple-ios-sim
+
+# repository root (macOS + Xcode): what the iOS CI job runs
+./scripts/build-xcframework.sh
+git diff --exit-code -- Graffix-AR/Generated
+xcodebuild build -project Graffix-AR.xcodeproj -scheme Graffix-AR \
+  -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO
+xcodebuild build -project Graffix-AR.xcodeproj -scheme Graffix-AR \
+  -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO
+```
+
+On a Linux host only the core commands run; the macOS CI job is the only Swift compile check. Commit `Graffix-AR/Generated/graffix_core.swift` byte-for-byte as generated (it contains trailing whitespace; stripped copies fail the drift check). When bumping UniFFI, regenerate the bindings; bindgen resolves `cargo metadata` from the working directory, so run it inside `core/` as the script does.
+
+Passing CI does not mean the app works: there are no XCTest/UI tests and the Simulator has no ARKit world tracking, so on-device AR and haptics acceptance is a human check on a LiDAR iPhone. Say which was verified.
+
+## Rules
+
+- Computation goes in the Rust core with unit tests; the Swift shell only does I/O (ARKit, sensors, storage, sharing) and rendering. `cargo test` stays green at every push.
 - Keep the toolchain and every dependency on the latest stable release.
-  When bumping UniFFI, regenerate the Swift bindings and note that
-  bindgen resolves `cargo metadata` from the working directory
-  (`scripts/build-xcframework.sh` already runs it inside `core/`).
+- `docs/concept/` is read-only. Do not reference or restore pre-rebuild code, docs or workflow.
+- User-facing text (PRs, UI, README, docs) is Japanese; agent-only instructions are English.
+- Entire records Devin sessions. In every new worktree run `entire-agent-devin bootstrap --checkpoint-repo shinma06/entire-checkpoints`; checkpoints must only go to the private `checkpoints` remote, never `origin`. `.devin/hooks.v1.json` and `.entire/.gitignore` are committed on purpose; `.entire/settings.local.json` stays local.
+- Never commit credentials.
 
-## Build and checks
-
-The required checks are the two jobs in `.github/workflows/ci.yml`; run the
-same commands locally where the platform allows.
-
-- **Rust core (Linux)** — in `core/`: `cargo test --locked`,
-  `cargo clippy --locked --all-targets --all-features -- -D warnings`,
-  `cargo check --locked --lib --target aarch64-apple-ios` and
-  `--target aarch64-apple-ios-sim`. `cargo test` stays green at every push.
-- **iOS app (Xcode)** — macOS only: `./scripts/build-xcframework.sh`
-  (XCFramework + UniFFI Swift bindings), then
-  `git diff --exit-code -- Graffix-AR/Generated` and
-  `xcodebuild build -project Graffix-AR.xcodeproj -scheme Graffix-AR`
-  for `generic/platform=iOS` and `generic/platform=iOS Simulator`
-  with `CODE_SIGNING_ALLOWED=NO`.
-- Commit `Graffix-AR/Generated/graffix_core.swift` byte-for-byte as
-  generated (it contains trailing whitespace; stripped copies fail CI).
-- There are no XCTest/UI tests. A green build is not an app, AR, haptics or
-  device pass: state plainly what was not verified.
-
-## How work lands
-
-- A Devin parent session splits work into one task per child session.
-- Each child branches off the integration branch named in its task, opens
-  one PR into that branch, and gets `.github/workflows/ci.yml` green before
-  reporting. The parent reviews and integrates; nobody else merges.
-- Never push directly or force-push to `main`/`master`/`develop` or to the
-  integration branch. `main` and `develop` are also protected server-side
-  by GitHub rulesets.
-- The owner's explicit instructions outrank this file. Open product or
-  design questions go to the owner; do not guess.
-- Human-facing text (PR descriptions, UI, README) is Japanese.
-
-## Session tracking (Entire)
-
-- Entire checkpoints are enabled for Devin sessions via the owner's
-  `entire-agent-devin` (external agent protocol). `.devin/hooks.v1.json`
-  and `.entire/.gitignore` are committed on purpose.
-- Checkpoints (full transcripts) go to the private `checkpoints` remote,
-  never into this repository. `.entire/settings.local.json` stays local.
+The previous multi-agent operation is preserved; see `docs/legacy-ops/README.md`.
