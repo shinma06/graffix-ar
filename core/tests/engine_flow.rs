@@ -309,3 +309,48 @@ fn saved_work_replays_recorded_stroke_timing() {
     assert!(more.has_recorded_timing);
     assert!(more.timelapse_duration_ms > info.timelapse_duration_ms);
 }
+
+#[test]
+fn saved_work_exports_timelapse_video_frames() {
+    use graffix_core::export::TimelapseExportRequestF;
+    use graffix_core::work::{FramingF, SavedWork, SceneConfigF, SceneLightingF, WallMaterialF};
+
+    let e = locked_engine(2.0);
+    for i in 1..=20 {
+        e.tick(input_dt(v3(i as f32 * 0.02, 0.0, 2.0), true, 0.05));
+    }
+    e.tick(input_dt(forward(), false, 0.05));
+
+    let work = SavedWork::new(e.serialize_canvas()).unwrap();
+    let request = TimelapseExportRequestF {
+        width: 120,
+        height: 90,
+        fps: 30,
+        speed: 2.0,
+    };
+    let scene = SceneConfigF {
+        lighting: SceneLightingF::Overcast,
+        material: WallMaterialF::Plaster,
+        wall_color_index: 0,
+    };
+    let job = work.clone().timelapse_export(request, scene);
+    let plan = job.plan();
+    assert_eq!(plan, work.timelapse_export_plan(request));
+    assert!(!plan.sped_up);
+    assert_eq!(plan.replay_duration_ms, work.info().timelapse_duration_ms);
+    assert!(plan.replay_frame_count > 2);
+    assert_eq!(
+        plan.total_frame_count,
+        plan.replay_frame_count + plan.hold_frame_count
+    );
+
+    let first = job.render_frame(0);
+    assert_eq!((first.width, first.height), (120, 90));
+    for i in 1..plan.total_frame_count - 1 {
+        job.render_frame(i);
+    }
+    let last = job.render_frame(plan.total_frame_count - 1);
+    let finished = work.render_scene(scene, FramingF::FitWork, 120, 90);
+    assert_eq!(last.rgba, finished.rgba);
+    assert_ne!(first.rgba, finished.rgba);
+}

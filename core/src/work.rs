@@ -5,6 +5,7 @@
 use std::sync::{Arc, Mutex};
 
 use crate::canvas::Stroke;
+use crate::export::{Plan, TimelapseExport, TimelapseExportPlanF, TimelapseExportRequestF};
 use crate::ffi::{CoreError, PaletteEntryF};
 use crate::palette;
 use crate::raster::{Paint, PaintLayer, View};
@@ -182,7 +183,7 @@ pub fn scene_options() -> SceneOptionsF {
 
 /// Incremental timelapse paint layer: replaying forward only stamps the
 /// newly revealed marks.
-struct ReplayCache {
+pub(crate) struct ReplayCache {
     layer: PaintLayer,
     marks_drawn: usize,
 }
@@ -216,6 +217,36 @@ impl SavedWork {
         let w = width.clamp(1, MAX_IMAGE_SIDE);
         let h = height.clamp(1, MAX_IMAGE_SIDE);
         scene::view_for(self.bounds, framing, w, h)
+    }
+
+    /// Timelapse framing: the whole work, so the picture does not move while
+    /// it grows.
+    pub(crate) fn fit_view(&self, width: u32, height: u32) -> View {
+        self.view(Framing::FitWork, width, height)
+    }
+
+    /// The replay at `t_ms` in `view`, reusing `cache` when moving forward.
+    pub(crate) fn render_replay(
+        &self,
+        cache: &mut Option<ReplayCache>,
+        view: View,
+        t_ms: u32,
+        scene: Scene,
+    ) -> RasterImageF {
+        let target = self.timeline.progress(t_ms).visible_marks;
+        let reusable = cache
+            .as_ref()
+            .is_some_and(|c| c.layer.view == view && c.marks_drawn <= target);
+        if !reusable {
+            *cache = Some(ReplayCache {
+                layer: PaintLayer::new(view),
+                marks_drawn: 0,
+            });
+        }
+        let c = cache.as_mut().unwrap();
+        self.stamp(&mut c.layer, c.marks_drawn..target);
+        c.marks_drawn = target;
+        self.image(&c.layer, scene)
     }
 
     /// Stamp timeline marks `range` (paint order) into `layer`.
@@ -303,22 +334,25 @@ impl SavedWork {
         width: u32,
         height: u32,
     ) -> RasterImageF {
-        let view = self.view(Framing::FitWork, width, height);
-        let target = self.timeline.progress(t_ms).visible_marks;
-        let mut guard = self.replay.lock().unwrap();
-        let reusable = guard
-            .as_ref()
-            .is_some_and(|c| c.layer.view == view && c.marks_drawn <= target);
-        if !reusable {
-            *guard = Some(ReplayCache {
-                layer: PaintLayer::new(view),
-                marks_drawn: 0,
-            });
-        }
-        let cache = guard.as_mut().unwrap();
-        self.stamp(&mut cache.layer, cache.marks_drawn..target);
-        cache.marks_drawn = target;
-        self.image(&cache.layer, scene.into())
+        let view = self.fit_view(width, height);
+        let mut cache = self.replay.lock().unwrap();
+        self.render_replay(&mut cache, view, t_ms, scene.into())
+    }
+
+    /// What exporting the timelapse as a video would produce (frame count,
+    /// length, size, speed-up for long works) — for the UI before exporting.
+    pub fn timelapse_export_plan(&self, request: TimelapseExportRequestF) -> TimelapseExportPlanF {
+        Plan::new(self.timeline.duration_ms, &request).to_ffi()
+    }
+
+    /// An export job rendering the timelapse video frames in `scene`.
+    pub fn timelapse_export(
+        self: Arc<Self>,
+        request: TimelapseExportRequestF,
+        scene: SceneConfigF,
+    ) -> Arc<TimelapseExport> {
+        let plan = Plan::new(self.timeline.duration_ms, &request);
+        Arc::new(TimelapseExport::new(self, plan, scene.into()))
     }
 }
 
