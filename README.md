@@ -278,12 +278,43 @@ open Graffix-AR.xcodeproj
   `generic/platform=iOS` と `generic/platform=iOS Simulator`
   （`CODE_SIGNING_ALLOWED=NO`）で実行 — **Swift シェル全体のコンパイル
   とリンクまで**。
+- macOS: 作品詳細の UI テスト（`Graffix-ARUITests`、XCUITest）を
+  利用可能な iOS 27 の iPhone Simulator で `xcodebuild test` し、
+  `.xcresult`（スクリーンショット添付つき）を成果物
+  `UITests-xcresult` としてアップロード。
+
+**確認済み（iOS Simulator — UI テスト `Graffix-ARUITests`）**
+
+AR は Simulator で動かないため、テストは決定的な保存作品
+（記録時刻つき v3 ×1・時刻なし旧 v2 ×1、GFXC はテスト側で組み立て）を
+シードして「作品」タブから詳細を開く。シードは Debug ビルドで起動引数
+`-GraffixUITestSeedWorks` があるときだけ有効で、環境変数
+`GRAFFIX_UITEST_WORKS` の作品を専用ディレクトリ `Documents/UITestWorks`
+に書き出してストアをそこへ向ける（通常起動・Release ビルドでは無効、
+実際の `Documents/works` には触れない）。
+
+- 作品一覧: シードした 2 件が新しい順に並ぶ。
+- シーン: 照明（夜（街灯））・壁の素材（レンガ）・壁の色・視距離
+  スライダーを変えるたびにプレビュー画像が変わり、視距離／視野の幅の
+  表示が更新される。
+- タイムラプス（v3）: 初期表示は最終フレーム、シークで途中の
+  ストローク／時刻へ移動、×1 で再生すると進捗が進み一時停止で止まる、
+  ×8 では残りが等速より速く最後まで進んで自動停止する。
+- タイムラプス（v2）: 旧形式の注記が出て、一定速度の再生が最後まで進む。
+
+ローカル実行（Xcode 27 + iOS 27 Simulator、XCFramework 生成後）:
+
+```bash
+xcodebuild test -project Graffix-AR.xcodeproj -scheme Graffix-AR \
+  -destination 'platform=iOS Simulator,name=iPhone 18 Pro,OS=27.0' \
+  -resultBundlePath build/UITests.xcresult CODE_SIGNING_ALLOWED=NO
+```
 
 **未確認（ビルドの成功は動作確認ではない）**
 
-- アプリの実行そのもの（XCTest/UI テストは無い）。作品詳細の画面操作
-  （シーン切替・視距離スライダー・タイムラプスの再生/シーク）、
-  描画速度（実機でのフレームレート）、VoiceOver の読み上げ。
+- 実機でのアプリ実行（UI テストは Simulator の作品詳細のみ。描く／
+  マップタブは対象外）、描画速度（実機でのフレームレート）、
+  VoiceOver の読み上げ。
 - コアのソフトウェアラスタライザと AR の `WallCanvasRenderer` の見た目の
   一致（同じモデルを実装しているが、並べての目視比較はしていない）。
 - - 位置情報許可フロー（プロンプト文言、拒否時のマップ挙動、保存時の

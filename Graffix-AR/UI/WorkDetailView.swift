@@ -29,6 +29,7 @@ struct WorkDetailView: View {
                             Text("タイムラプス").tag(Mode.timelapse)
                         }
                         .pickerStyle(.segmented)
+                        .accessibilityIdentifier("workDetail.mode")
 
                         switch mode {
                         case .scene:
@@ -107,11 +108,13 @@ private struct ScenePreviewSection: View {
         let options = Self.options
         VStack(alignment: .leading, spacing: 14) {
             PreviewImage(image: image, label: "シーンプレビュー")
+                .accessibilityIdentifier("workDetail.scene.preview")
 
             Text(String(format: "%.1f m 離れて見たとき — 視野の幅 %.1f m（水平画角 %.0f°）／作品 %.2f × %.2f m",
                         distance, viewWidthM, options.cameraHfovDeg, info.widthM, info.heightM))
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .accessibilityIdentifier("workDetail.scene.caption")
 
             Picker("照明", selection: $lighting) {
                 ForEach(options.lightings, id: \.self) { option in
@@ -119,6 +122,7 @@ private struct ScenePreviewSection: View {
                 }
             }
             .pickerStyle(.segmented)
+            .accessibilityIdentifier("workDetail.scene.lighting")
 
             Picker("壁の素材", selection: $material) {
                 ForEach(options.materials, id: \.self) { option in
@@ -126,6 +130,7 @@ private struct ScenePreviewSection: View {
                 }
             }
             .pickerStyle(.segmented)
+            .accessibilityIdentifier("workDetail.scene.material")
 
             VStack(alignment: .leading, spacing: 6) {
                 Text("壁の色").font(.subheadline)
@@ -151,6 +156,7 @@ private struct ScenePreviewSection: View {
                     Text(String(format: "%.0f m", options.maxViewingDistanceM)).font(.caption2)
                 }
                 .accessibilityValue(String(format: "%.1f メートル", distance))
+                .accessibilityIdentifier("workDetail.scene.distance")
             }
         }
         .task(id: RenderKey(scene: scene, distance: distance)) {
@@ -193,6 +199,7 @@ private struct ScenePreviewSection: View {
         .buttonStyle(.plain)
         .accessibilityLabel(entry.name)
         .accessibilityAddTraits(selected ? .isSelected : [])
+        .accessibilityIdentifier("workDetail.scene.wallColor.\(index)")
     }
 }
 
@@ -219,6 +226,7 @@ private struct TimelapsePlayerSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             PreviewImage(image: image, label: "タイムラプス")
+                .accessibilityIdentifier("workDetail.timelapse.preview")
 
             HStack {
                 Button {
@@ -231,6 +239,7 @@ private struct TimelapsePlayerSection: View {
                 .buttonStyle(.borderedProminent)
                 .disabled(info.strokeCount == 0)
                 .accessibilityLabel(playing ? "一時停止" : "再生")
+                .accessibilityIdentifier("workDetail.timelapse.playPause")
 
                 Slider(value: Binding(get: { min(timeMs, duration) },
                                       set: { timeMs = $0; playing = false }),
@@ -238,6 +247,7 @@ private struct TimelapsePlayerSection: View {
                     Text("再生位置")
                 }
                 .disabled(info.strokeCount == 0)
+                .accessibilityIdentifier("workDetail.timelapse.scrubber")
             }
 
             Picker("速度", selection: $speed) {
@@ -246,17 +256,20 @@ private struct TimelapsePlayerSection: View {
                 }
             }
             .pickerStyle(.segmented)
+            .accessibilityIdentifier("workDetail.timelapse.speed")
 
             if let progress {
                 Text(statusText(progress))
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("workDetail.timelapse.status")
             }
             if !info.hasRecordedTiming && info.strokeCount > 0 {
                 Label("記録時刻のない旧形式の作品です。描いた順に一定の速さで再生します。",
                       systemImage: "clock.badge.questionmark")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("workDetail.timelapse.legacyNote")
             }
         }
         .task(id: playing) {
