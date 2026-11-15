@@ -42,12 +42,22 @@ final class WorkDetailUITests: XCTestCase {
         selectSegment("workDetail.scene.material", "レンガ")
         image = changedImage(of: preview, from: image, after: "素材 → レンガ")
 
-        let swatch = app.buttons["workDetail.scene.wallColor.3"]
-        XCTAssertTrue(swatch.waitForExistence(timeout: 5))
+        let materialSwatch = app.buttons["workDetail.scene.wallColor.material"]
+        XCTAssertTrue(materialSwatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(materialSwatch.isSelected, "初期状態は「素材の色」")
+        let swatch = app.buttons["workDetail.scene.wallColor.black"]
+        XCTAssertTrue(swatch.exists)
         swatch.tap()
-        image = changedImage(of: preview, from: image, after: "壁色 → 3")
+        image = changedImage(of: preview, from: image, after: "壁色 → ブラック")
         XCTAssertTrue(swatch.isSelected, "選んだ壁色が選択状態になる")
+        XCTAssertFalse(materialSwatch.isSelected)
         attachScreenshot("04-scene-night-brick-color")
+
+        materialSwatch.tap()
+        image = changedImage(of: preview, from: image, after: "壁色 → 素材の色")
+        XCTAssertTrue(materialSwatch.isSelected, "「素材の色」に戻せる")
+        swatch.tap()
+        image = changedImage(of: preview, from: image, after: "壁色 → ブラック（再）")
 
         let captionBefore = caption.label
         let slider = app.sliders["workDetail.scene.distance"]

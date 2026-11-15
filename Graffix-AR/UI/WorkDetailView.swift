@@ -206,7 +206,7 @@ private struct ScenePreviewSection: View {
         .buttonStyle(.plain)
         .accessibilityLabel(label)
         .accessibilityAddTraits(selected ? .isSelected : [])
-        .accessibilityIdentifier("workDetail.scene.wallColor.\(index)")
+        .accessibilityIdentifier("workDetail.scene.wallColor.\(id.map { "\($0)" } ?? "material")")
     }
 }
 
