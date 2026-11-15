@@ -7,6 +7,7 @@
 
 コンセプト: [`docs/concept/SHIBUYA-FUN-PROJECT.pdf`](docs/concept/SHIBUYA-FUN-PROJECT.pdf)、
 追加ビジョン（フェーズ 2/3）: [`docs/concept/VISION.md`](docs/concept/VISION.md)。
+フェーズ 2 設計メモ（提案・オーナー判断待ち）: [`docs/design/phase2.md`](docs/design/phase2.md)。
 
 **フェーズ 1（本実装）** — ローカルの描画体験:
 壁の認識・ロック → 距離連動スプレー描画 → 撮影して SNS 共有。
