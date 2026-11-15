@@ -29,15 +29,21 @@ struct LocalWorkRecord: Codable, Identifiable, Hashable {
 final class LocalWorkStore {
     private(set) var works: [LocalWorkRecord] = []
 
-    private let worksDir: URL
+    private var worksDir: URL
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
     init(fileManager: FileManager = .default) {
         let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask)[0]
         worksDir = docs.appendingPathComponent("works", isDirectory: true)
-        try? fileManager.createDirectory(at: worksDir, withIntermediateDirectories: true)
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        #if DEBUG
+        if let fixtureDir = UITestWorkFixtures.seedIfRequested(
+            documents: docs, fileManager: fileManager, encoder: encoder) {
+            worksDir = fixtureDir
+        }
+        #endif
+        try? fileManager.createDirectory(at: worksDir, withIntermediateDirectories: true)
         reload()
     }
 
@@ -110,3 +116,43 @@ final class LocalWorkStore {
         worksDir.appendingPathComponent("\(id).json")
     }
 }
+
+#if DEBUG
+/// UI テスト専用のシード（Debug ビルドのみ）。起動引数
+/// `-GraffixUITestSeedWorks` があるときだけ、`GRAFFIX_UITEST_WORKS`
+/// 環境変数の JSON（`[{record, canvas(base64 GFXC)}]`）を専用ディレクトリ
+/// `Documents/UITestWorks` に書き出し、ストアをそこに向ける。
+/// 通常起動では何もせず、実際の `Documents/works` には触れない。
+enum UITestWorkFixtures {
+    static let launchArgument = "-GraffixUITestSeedWorks"
+    static let environmentKey = "GRAFFIX_UITEST_WORKS"
+
+    private struct Fixture: Decodable {
+        var record: LocalWorkRecord
+        var canvas: Data
+    }
+
+    static func seedIfRequested(
+        documents: URL,
+        fileManager: FileManager,
+        encoder: JSONEncoder,
+        processInfo: ProcessInfo = .processInfo
+    ) -> URL? {
+        guard processInfo.arguments.contains(launchArgument) else { return nil }
+        let dir = documents.appendingPathComponent("UITestWorks", isDirectory: true)
+        try? fileManager.removeItem(at: dir)
+        try? fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
+        let payload = processInfo.environment[environmentKey].map { Data($0.utf8) } ?? Data("[]".utf8)
+        do {
+            for fixture in try JSONDecoder().decode([Fixture].self, from: payload) {
+                let id = fixture.record.id
+                try fixture.canvas.write(to: dir.appendingPathComponent("\(id).gfxc"))
+                try encoder.encode(fixture.record).write(to: dir.appendingPathComponent("\(id).json"))
+            }
+        } catch {
+            assertionFailure("UI test fixtures could not be seeded: \(error)")
+        }
+        return dir
+    }
+}
+#endif

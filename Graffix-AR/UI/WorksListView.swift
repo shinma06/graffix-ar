@@ -17,6 +17,7 @@ struct WorksListView: View {
                     NavigationLink(value: work) {
                         row(for: work)
                     }
+                    .accessibilityIdentifier("worksList.row.\(work.id)")
                 }
                 .onDelete { offsets in
                     for index in offsets {

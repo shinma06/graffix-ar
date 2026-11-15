@@ -44,7 +44,7 @@ jobs:
     name: iOS app (Xcode)
     # Newest macOS image (macOS 27); it is the only one with the iOS 27 SDK.
     runs-on: xcode-27
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
         with:
@@ -82,3 +82,44 @@ jobs:
             -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath build/DerivedData-sim \
             CODE_SIGNING_ALLOWED=NO
+      - name: Pick an iOS 27 iPhone simulator
+        id: sim
+        run: |
+          xcrun simctl list runtimes
+          udid=$(xcrun simctl list devices available -j | python3 -c '
+          import json, re, sys
+          devices = json.load(sys.stdin)["devices"]
+          found = []
+          for runtime, entries in devices.items():
+              m = re.search(r"iOS-27-(\d+)", runtime)
+              if not m:
+                  continue
+              for d in entries:
+                  if d["name"].startswith("iPhone"):
+                      # Prefer a standard "iPhone NN Pro", then any iPhone; newest runtime first.
+                      standard = re.fullmatch(r"iPhone \d+ Pro", d["name"]) is not None
+                      found.append((standard, int(m.group(1)), d["name"], d["udid"]))
+          if not found:
+              sys.exit("no available iOS 27 iPhone simulator")
+          found.sort(reverse=True)
+          print(found[0][2], "/ iOS 27.%d" % found[0][1], file=sys.stderr)
+          print(found[0][3])
+          ')
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+          xcrun simctl boot "$udid" || true
+          xcrun simctl bootstatus "$udid" -b
+      - name: UI tests (works detail, iOS 27 Simulator)
+        run: |
+          xcodebuild test \
+            -project Graffix-AR.xcodeproj -scheme Graffix-AR \
+            -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}" \
+            -derivedDataPath build/DerivedData-uitest \
+            -resultBundlePath build/UITests.xcresult \
+            CODE_SIGNING_ALLOWED=NO
+      - name: Upload UI test results (.xcresult)
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: UITests-xcresult
+          path: build/UITests.xcresult
+          if-no-files-found: warn

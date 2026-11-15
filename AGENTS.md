@@ -33,7 +33,7 @@ xcodebuild build -project Graffix-AR.xcodeproj -scheme Graffix-AR \
 
 On a Linux host only the core commands run; the macOS CI job is the only Swift compile check. Commit `Graffix-AR/Generated/graffix_core.swift` byte-for-byte as generated (it contains trailing whitespace; stripped copies fail the drift check). When bumping UniFFI, regenerate the bindings; bindgen resolves `cargo metadata` from the working directory, so run it inside `core/` as the script does.
 
-Passing CI does not mean the app works: there are no XCTest/UI tests and the Simulator has no ARKit world tracking, so on-device AR and haptics acceptance is a human check on a LiDAR iPhone. Say which was verified.
+Passing CI does not mean the app works: the only XCTest/UI tests are the works-detail UI tests (`Graffix-ARUITests`, run in CI on an iOS 27 Simulator with seeded fixture works); nothing else in the Swift shell is exercised, and the Simulator has no ARKit world tracking, so on-device AR and haptics acceptance is a human check on a LiDAR iPhone. Say which was verified.
 
 ## Rules
 

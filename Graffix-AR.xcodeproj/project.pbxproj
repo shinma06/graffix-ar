@@ -10,9 +10,20 @@
 		A11000000000000000000001 /* GraffixCore.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = F10000000000000000000001 /* GraffixCore.xcframework */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		CP0000000000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = PR0000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = T10000000000000000000001;
+			remoteInfo = "Graffix-AR";
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		F10000000000000000000001 /* GraffixCore.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = GraffixCore.xcframework; path = core/build/GraffixCore.xcframework; sourceTree = "<group>"; };
 		P10000000000000000000001 /* Graffix-AR.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Graffix-AR.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		P10000000000000000000002 /* Graffix-ARUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Graffix-ARUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -38,6 +49,11 @@
 			path = "Graffix-AR";
 			sourceTree = "<group>";
 		};
+		G10000000000000000000002 /* Graffix-ARUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "Graffix-ARUITests";
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -49,6 +65,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		S20000000000000000000002 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -56,6 +79,7 @@
 			isa = PBXGroup;
 			children = (
 				G10000000000000000000001 /* Graffix-AR */,
+				G10000000000000000000002 /* Graffix-ARUITests */,
 				G30000000000000000000001 /* Frameworks */,
 				G20000000000000000000001 /* Products */,
 			);
@@ -65,6 +89,7 @@
 			isa = PBXGroup;
 			children = (
 				P10000000000000000000001 /* Graffix-AR.app */,
+				P10000000000000000000002 /* Graffix-ARUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -102,6 +127,29 @@
 			productReference = P10000000000000000000001 /* Graffix-AR.app */;
 			productType = "com.apple.product-type.application";
 		};
+		T10000000000000000000002 /* Graffix-ARUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = L30000000000000000000001 /* Build configuration list for PBXNativeTarget "Graffix-ARUITests" */;
+			buildPhases = (
+				S10000000000000000000002 /* Sources */,
+				S20000000000000000000002 /* Frameworks */,
+				S30000000000000000000002 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				D10000000000000000000001 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				G10000000000000000000002 /* Graffix-ARUITests */,
+			);
+			name = "Graffix-ARUITests";
+			packageProductDependencies = (
+			);
+			productName = "Graffix-ARUITests";
+			productReference = P10000000000000000000002 /* Graffix-ARUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -114,6 +162,10 @@
 				TargetAttributes = {
 					T10000000000000000000001 = {
 						CreatedOnToolsVersion = 26.0;
+					};
+					T10000000000000000000002 = {
+						CreatedOnToolsVersion = 26.0;
+						TestTargetID = T10000000000000000000001;
 					};
 				};
 			};
@@ -133,12 +185,20 @@
 			projectRoot = "";
 			targets = (
 				T10000000000000000000001 /* Graffix-AR */,
+				T10000000000000000000002 /* Graffix-ARUITests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		S30000000000000000000001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		S30000000000000000000002 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -155,7 +215,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		S10000000000000000000002 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		D10000000000000000000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = T10000000000000000000001 /* Graffix-AR */;
+			targetProxy = CP0000000000000000000001 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		C10000000000000000000001 /* Debug */ = {
@@ -339,6 +414,46 @@
 			};
 			name = Release;
 		};
+		C30000000000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = app.graffix.shibuya.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = "Graffix-AR";
+			};
+			name = Debug;
+		};
+		C30000000000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = app.graffix.shibuya.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = "Graffix-AR";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -356,6 +471,15 @@
 			buildConfigurations = (
 				C10000000000000000000001 /* Debug */,
 				C10000000000000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		L30000000000000000000001 /* Build configuration list for PBXNativeTarget "Graffix-ARUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C30000000000000000000001 /* Debug */,
+				C30000000000000000000002 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
