@@ -17,7 +17,7 @@ enum WorkFixtures {
         let canvas: Data
     }
 
-    /// v3: 3 ストローク、記録時刻つき（50 ms/ダブ、ストローク間 300 ms）。
+    /// v3: 3 ストローク、記録時刻つき（300 ms/ダブ、ストローク間 300 ms）。
     static let timedV3 = Fixture(
         id: "UITEST-V3-TIMED",
         title: "UIテスト v3 時刻あり",
@@ -64,7 +64,9 @@ enum WorkFixtures {
     // MARK: - Strokes
 
     private static let dabsPerStroke = 61
-    private static let dabIntervalMs: UInt32 = 50
+    /// `MAX_PAUSE_MS`（400 ms）未満なので圧縮されず、全体は約 54.6 秒。
+    /// 遅い CI ランナーでも ×1 再生の途中で一時停止できる長さにしている。
+    private static let dabIntervalMs: UInt32 = 300
     private static let strokeGapMs: UInt32 = 300
 
     private static var timedStrokes: [GFXC.Stroke] {
