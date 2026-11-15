@@ -2,18 +2,21 @@
 
 This repository was rebuilt from concept in November 2026. The pre-rebuild
 Swift implementation and its development harness were removed on purpose:
-do not reference pre-rebuild code, docs, or workflow conventions.
+do not reference or restore pre-rebuild code, docs, or workflow conventions.
 
 ## Source of truth
 
 - `docs/concept/` — the original SHIBUYA+FUN PROJECT deck and `VISION.md`.
-  Product decisions come from there and from the owner, not from git history.
+  Read-only. Product decisions come from there and from the owner, not from
+  git history.
 - `README.md` — architecture, spray model, build steps, verified/unverified.
 
 ## Stack
 
 - Rust core in `core/` (crate `graffix-core`, UniFFI bindings) + Swift shell
-  in `Graffix-AR/`. iOS 27 only.
+  in `Graffix-AR/` (SwiftUI + RealityKit `ARView`). iOS 27 only.
+- Computation belongs in the Rust core with unit tests; the Swift shell only
+  does I/O (ARKit, sensors, storage) and rendering.
 - Keep the toolchain and every dependency on the latest stable release.
   When bumping UniFFI, regenerate the Swift bindings and note that
   bindgen resolves `cargo metadata` from the working directory
@@ -21,7 +24,7 @@ do not reference pre-rebuild code, docs, or workflow conventions.
 
 ## Build and checks
 
-The required checks are the jobs in `.github/workflows/ci.yml`; run the
+The required checks are the two jobs in `.github/workflows/ci.yml`; run the
 same commands locally where the platform allows.
 
 - **Rust core (Linux)** — in `core/`: `cargo test --locked`,
@@ -36,8 +39,21 @@ same commands locally where the platform allows.
   with `CODE_SIGNING_ALLOWED=NO`.
 - Commit `Graffix-AR/Generated/graffix_core.swift` byte-for-byte as
   generated (it contains trailing whitespace; stripped copies fail CI).
-- There are no XCTest/UI tests. A green build is not an app, AR,
-  haptics or device pass: state plainly what was not verified.
+- There are no XCTest/UI tests. A green build is not an app, AR, haptics or
+  device pass: state plainly what was not verified.
+
+## How work lands
+
+- A Devin parent session splits work into one task per child session.
+- Each child branches off the integration branch named in its task, opens
+  one PR into that branch, and gets `.github/workflows/ci.yml` green before
+  reporting. The parent reviews and integrates; nobody else merges.
+- Never push directly or force-push to `main`/`master`/`develop` or to the
+  integration branch. `main` and `develop` are also protected server-side
+  by GitHub rulesets.
+- The owner's explicit instructions outrank this file. Open product or
+  design questions go to the owner; do not guess.
+- Human-facing text (PR descriptions, UI, README) is Japanese.
 
 ## Session tracking (Entire)
 
@@ -46,15 +62,3 @@ same commands locally where the platform allows.
   and `.entire/.gitignore` are committed on purpose.
 - Checkpoints (full transcripts) go to the private `checkpoints` remote,
   never into this repository. `.entire/settings.local.json` stays local.
-
-## Working rules
-
-- The owner's explicit instructions outrank this file.
-- Computation belongs in the Rust core with unit tests; the Swift shell
-  only does I/O (ARKit, sensors, storage) and rendering.
-- `docs/concept/` is read-only.
-- `main` and `develop` are protected by GitHub rulesets, so changes land
-  through a pull request. Never push directly or force-push to
-  `main`/`master`/`develop`. That is a server-side rule, not a workflow to
-  extend; `.github/*-ruleset.json` mirror the server settings and are the
-  owner's.

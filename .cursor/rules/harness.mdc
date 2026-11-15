@@ -1,6 +1,0 @@
----
-description: Shared agent contract entrypoint
-alwaysApply: true
----
-
-Read `AGENTS.md` as the shared contract and `README.md` for project facts (architecture, build steps, verified/unverified). Do not duplicate or override the common instructions here.

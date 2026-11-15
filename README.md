@@ -297,32 +297,23 @@ open Graffix-AR.xcodeproj
   の UV 向き — キャンバス/ハイライトが上下反転する場合は
   `WallCanvasRenderer` の基底マッピングを反転させる。
 
-## 開発ハーネス
+## 開発運用
 
-- 共通規約の正本は [`AGENTS.md`](AGENTS.md)。`.cursor/rules/harness.mdc` は
-  そこへの入口のみ。`.devin/hooks.v1.json` と `.entire/.gitignore` は
-  Devin セッションの Entire チェックポイント用（`AGENTS.md` 参照）。
+- 共通規約の正本は [`AGENTS.md`](AGENTS.md)（作業の進め方・必須チェック・
+  バインディングのコミット規則）。
 - 必須の確認は `.github/workflows/ci.yml` の 2 ジョブ
-  （「Rust core (Linux)」「iOS app (Xcode)」、内容は上記
-  「動作確認済み / 未確認」）。Xcode スキームは `Graffix-AR`
-  （旧 `Mock Up` は削除済み）。
-- 再構築前のハーネス（Issue/develop 運用、`scripts/check.py`・
-  `scripts/workflow/*`、`docs/workflow.md` 等、`.githooks/`）は意図的に
-  削除済み。参照は `main` の履歴にのみ残る。
-- 旧ソースツリー（`Features/`, `Common/`, `Resources/Localization`）は
-  全て削除済み。同期フォルダ group 方式の `project.pbxproj` に刷新
-  （objectVersion 77, Xcode 16+）。
+  「Rust core (Linux)」「iOS app (Xcode)」（内容は上記
+  「動作確認済み / 未確認」）。Xcode スキームは `Graffix-AR`。
+- `project.pbxproj` は同期フォルダ group 方式（objectVersion 77）。
+  `Graffix-AR/` 配下のファイルは自動でアプリターゲットに含まれる。
+- `.devin/hooks.v1.json` と `.entire/.gitignore` は Devin セッションの
+  Entire チェックポイント用。
 
-### 既知の不整合
+### GitHub サーバ側設定の既知の不整合（所有者が変更）
 
-- GitHub の `main` / `develop` ルールセット（`.github/*-ruleset.json` と
-  サーバー設定）の必須ステータスチェックは再構築前の
-  `test` / `PR policy` / `Agent review` / `Acceptance gate` のまま。
-  現在の CI はこれらを出力しないため、`main` / `develop` 向け PR は
-  所有者がルールセットを更新するまで必須チェックを満たせない。
+リポジトリからは変更できないため記録のみ。
 
-## 作業管理
-
-リポジトリの共通規約は `AGENTS.md`。変更はブランチを切って PR で
-統合する（`main` / `develop` への直接 push・force push は不可）。
-PR の base と統合方法は所有者の指示に従う。
+- ルールセット `main-pr-required` / `develop-pr-required` の必須
+  ステータスチェックが再構築前の `test` / `PR policy` / `Agent review` /
+  `Acceptance gate` のまま。現在の CI はこれらを出力しないため、
+  `main` / `develop` 向け PR は必須チェックを満たせない。
