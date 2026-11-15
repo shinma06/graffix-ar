@@ -1,27 +1,84 @@
 name: CI
 on:
   push:
-    branches: [main, develop, 'codex/**', 'claude/**', 'cursor/**', 'agent/**']
+    branches: [main]
   pull_request:
-    branches: [main, develop]
   workflow_dispatch:
 permissions:
   contents: read
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
+env:
+  CARGO_TERM_COLOR: always
 jobs:
-  test:
-    name: test
-    runs-on: macos-15
-    timeout-minutes: 25
+  rust:
+    name: Rust core (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: core
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
-          fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-python@v5
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          python-version: '3.11'
-      - name: Harness checks and affected iOS build
-        run: python3 scripts/workflow/change_impact.py --event --run-tests
+          components: clippy
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: core
+      - run: rustc --version && cargo --version
+      - name: cargo test
+        run: cargo test --locked
+      - name: cargo clippy
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
+      - name: cargo check (aarch64-apple-ios)
+        run: cargo check --locked --lib --target aarch64-apple-ios
+      - name: cargo check (aarch64-apple-ios-sim)
+        run: cargo check --locked --lib --target aarch64-apple-ios-sim
+
+  ios:
+    name: iOS app (Xcode)
+    # Newest macOS image (macOS 27); it is the only one with the iOS 27 SDK.
+    runs-on: xcode-27
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: core
+      - name: Toolchain versions
+        run: |
+          sw_vers
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          rustc --version
+      - name: Build GraffixCore.xcframework + Swift bindings
+        run: ./scripts/build-xcframework.sh
+      - name: Committed Swift bindings are up to date
+        run: git diff --exit-code -- Graffix-AR/Generated
+      - name: xcodebuild (generic iOS device)
+        run: |
+          xcodebuild build \
+            -project Graffix-AR.xcodeproj -scheme Graffix-AR \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData-device \
+            CODE_SIGNING_ALLOWED=NO
+      - name: xcodebuild (generic iOS Simulator)
+        run: |
+          xcodebuild build \
+            -project Graffix-AR.xcodeproj -scheme Graffix-AR \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/DerivedData-sim \
+            CODE_SIGNING_ALLOWED=NO
