@@ -398,7 +398,7 @@ private func uniffiTraitInterfaceCallWithError<T, E>(
         callStatus.pointee.errorBuf = FfiConverterString.lower(String(describing: error))
     }
 }
-// Initial value and increment amount for handles.
+// Initial value and increment amount for handles. 
 // These ensure that SWIFT handles always have the lowest bit set
 fileprivate let UNIFFI_HANDLEMAP_INITIAL: UInt64 = 1
 fileprivate let UNIFFI_HANDLEMAP_DELTA: UInt64 = 2
@@ -634,103 +634,103 @@ fileprivate struct FfiConverterData: FfiConverterRustBuffer {
 
 
 public protocol EngineProtocol: AnyObject, Sendable {
-
+    
     func canRedo()  -> Bool
-
+    
     func canUndo()  -> Bool
-
+    
     /**
      * Full canvas snapshot for rendering. Marks the canvas clean.
      */
     func canvasSnapshot()  -> CanvasSnapshotF
-
+    
     func capIndex()  -> UInt8
-
+    
     /**
      * Spray caps for real mode (ノズル picker entries).
      */
     func caps()  -> [NamedEntryF]
-
-    func clear()
-
+    
+    func clear() 
+    
     func colorIndex()  -> UInt8
-
+    
     /**
      * Replace the canvas from serialized bytes.
      */
-    func loadCanvas(bytes: Data) throws
-
+    func loadCanvas(bytes: Data) throws 
+    
     /**
      * Lock the wall currently under the nozzle. Returns the locked id.
      */
     func lockAimed()  -> UInt64?
-
+    
     /**
      * Lock a specific wall by id.
      */
     func lockWall(id: UInt64)  -> UInt64?
-
+    
     func mode()  -> SprayModeF
-
+    
     func palette()  -> [PaletteEntryF]
-
+    
     func presetIndex()  -> UInt8
-
+    
     /**
      * Brush presets for casual mode (書き方 picker entries).
      */
     func presets()  -> [NamedEntryF]
-
+    
     func redo()  -> Bool
-
+    
     /**
      * Serialize the canvas (v1 wire format). Upload-ready for later phases.
      */
     func serializeCanvas()  -> Data
-
+    
     /**
      * Swap the spray cap (real mode). Applies to the next stroke.
      */
-    func setCapIndex(index: UInt8)
-
+    func setCapIndex(index: UInt8) 
+    
     /**
      * Current spray color (palette index). Applies to the next stroke.
      */
-    func setColorIndex(index: UInt8)
-
+    func setColorIndex(index: UInt8) 
+    
     /**
      * Switch spray mode (カジュアル / リアル). Applies to the next stroke;
      * any in-flight stroke ends first.
      */
-    func setMode(mode: SprayModeF)
-
-    func setPresetIndex(index: UInt8)
-
+    func setMode(mode: SprayModeF) 
+    
+    func setPresetIndex(index: UInt8) 
+    
     /**
      * 缶を振る: one shake gesture mixes the can a bit more.
      */
-    func shake()
-
+    func shake() 
+    
     /**
      * Current shake level 0..1 (also reported in every tick's spray state).
      */
     func shakeLevel()  -> Float
-
+    
     /**
      * One frame of input in, one frame of decisions out. The shell calls this
      * from its AR frame callback.
      */
     func tick(input: FrameInputF)  -> FrameOutputF
-
+    
     func undo()  -> Bool
-
-    func unlock()
-
+    
+    func unlock() 
+    
     /**
      * Number of walls currently tracked (for UI hints).
      */
     func wallCount()  -> UInt32
-
+    
 }
 open class Engine: EngineProtocol, @unchecked Sendable {
     fileprivate let handle: UInt64
@@ -790,9 +790,9 @@ public convenience init() {
         try! rustCall { uniffi_graffix_core_fn_free_engine(handle, $0) }
     }
 
+    
 
-
-
+    
 open func canRedo() -> Bool  {
     return try!  FfiConverterBool.lift(try! rustCall() {
         uniffiCallStatus in
@@ -801,7 +801,7 @@ open func canRedo() -> Bool  {
     )
 })
 }
-
+    
 open func canUndo() -> Bool  {
     return try!  FfiConverterBool.lift(try! rustCall() {
         uniffiCallStatus in
@@ -810,7 +810,7 @@ open func canUndo() -> Bool  {
     )
 })
 }
-
+    
     /**
      * Full canvas snapshot for rendering. Marks the canvas clean.
      */
@@ -822,7 +822,7 @@ open func canvasSnapshot() -> CanvasSnapshotF  {
     )
 })
 }
-
+    
 open func capIndex() -> UInt8  {
     return try!  FfiConverterUInt8.lift(try! rustCall() {
         uniffiCallStatus in
@@ -831,7 +831,7 @@ open func capIndex() -> UInt8  {
     )
 })
 }
-
+    
     /**
      * Spray caps for real mode (ノズル picker entries).
      */
@@ -843,7 +843,7 @@ open func caps() -> [NamedEntryF]  {
     )
 })
 }
-
+    
 open func clear()  {try! rustCall() {
         uniffiCallStatus in
     uniffi_graffix_core_fn_method_engine_clear(
@@ -851,7 +851,7 @@ open func clear()  {try! rustCall() {
     )
 }
 }
-
+    
 open func colorIndex() -> UInt8  {
     return try!  FfiConverterUInt8.lift(try! rustCall() {
         uniffiCallStatus in
@@ -860,7 +860,7 @@ open func colorIndex() -> UInt8  {
     )
 })
 }
-
+    
     /**
      * Replace the canvas from serialized bytes.
      */
@@ -872,7 +872,7 @@ open func loadCanvas(bytes: Data)throws   {try rustCallWithError(FfiConverterTyp
     )
 }
 }
-
+    
     /**
      * Lock the wall currently under the nozzle. Returns the locked id.
      */
@@ -884,7 +884,7 @@ open func lockAimed() -> UInt64?  {
     )
 })
 }
-
+    
     /**
      * Lock a specific wall by id.
      */
@@ -897,7 +897,7 @@ open func lockWall(id: UInt64) -> UInt64?  {
     )
 })
 }
-
+    
 open func mode() -> SprayModeF  {
     return try!  FfiConverterTypeSprayModeF_lift(try! rustCall() {
         uniffiCallStatus in
@@ -906,7 +906,7 @@ open func mode() -> SprayModeF  {
     )
 })
 }
-
+    
 open func palette() -> [PaletteEntryF]  {
     return try!  FfiConverterSequenceTypePaletteEntryF.lift(try! rustCall() {
         uniffiCallStatus in
@@ -915,7 +915,7 @@ open func palette() -> [PaletteEntryF]  {
     )
 })
 }
-
+    
 open func presetIndex() -> UInt8  {
     return try!  FfiConverterUInt8.lift(try! rustCall() {
         uniffiCallStatus in
@@ -924,7 +924,7 @@ open func presetIndex() -> UInt8  {
     )
 })
 }
-
+    
     /**
      * Brush presets for casual mode (書き方 picker entries).
      */
@@ -936,7 +936,7 @@ open func presets() -> [NamedEntryF]  {
     )
 })
 }
-
+    
 open func redo() -> Bool  {
     return try!  FfiConverterBool.lift(try! rustCall() {
         uniffiCallStatus in
@@ -945,7 +945,7 @@ open func redo() -> Bool  {
     )
 })
 }
-
+    
     /**
      * Serialize the canvas (v1 wire format). Upload-ready for later phases.
      */
@@ -957,7 +957,7 @@ open func serializeCanvas() -> Data  {
     )
 })
 }
-
+    
     /**
      * Swap the spray cap (real mode). Applies to the next stroke.
      */
@@ -969,7 +969,7 @@ open func setCapIndex(index: UInt8)  {try! rustCall() {
     )
 }
 }
-
+    
     /**
      * Current spray color (palette index). Applies to the next stroke.
      */
@@ -981,7 +981,7 @@ open func setColorIndex(index: UInt8)  {try! rustCall() {
     )
 }
 }
-
+    
     /**
      * Switch spray mode (カジュアル / リアル). Applies to the next stroke;
      * any in-flight stroke ends first.
@@ -994,7 +994,7 @@ open func setMode(mode: SprayModeF)  {try! rustCall() {
     )
 }
 }
-
+    
 open func setPresetIndex(index: UInt8)  {try! rustCall() {
         uniffiCallStatus in
     uniffi_graffix_core_fn_method_engine_set_preset_index(
@@ -1003,7 +1003,7 @@ open func setPresetIndex(index: UInt8)  {try! rustCall() {
     )
 }
 }
-
+    
     /**
      * 缶を振る: one shake gesture mixes the can a bit more.
      */
@@ -1014,7 +1014,7 @@ open func shake()  {try! rustCall() {
     )
 }
 }
-
+    
     /**
      * Current shake level 0..1 (also reported in every tick's spray state).
      */
@@ -1026,7 +1026,7 @@ open func shakeLevel() -> Float  {
     )
 })
 }
-
+    
     /**
      * One frame of input in, one frame of decisions out. The shell calls this
      * from its AR frame callback.
@@ -1040,7 +1040,7 @@ open func tick(input: FrameInputF) -> FrameOutputF  {
     )
 })
 }
-
+    
 open func undo() -> Bool  {
     return try!  FfiConverterBool.lift(try! rustCall() {
         uniffiCallStatus in
@@ -1049,7 +1049,7 @@ open func undo() -> Bool  {
     )
 })
 }
-
+    
 open func unlock()  {try! rustCall() {
         uniffiCallStatus in
     uniffi_graffix_core_fn_method_engine_unlock(
@@ -1057,7 +1057,7 @@ open func unlock()  {try! rustCall() {
     )
 }
 }
-
+    
     /**
      * Number of walls currently tracked (for UI hints).
      */
@@ -1069,9 +1069,9 @@ open func wallCount() -> UInt32  {
     )
 })
 }
+    
 
-
-
+    
 }
 
 
@@ -1138,9 +1138,9 @@ public struct CanvasFrameF: Equatable, Hashable {
         self.normal = normal
     }
 
+    
 
-
-
+    
 }
 
 #if compiler(>=6)
@@ -1154,9 +1154,9 @@ public struct FfiConverterTypeCanvasFrameF: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CanvasFrameF {
         return
             try CanvasFrameF(
-                origin: FfiConverterTypeVec3F.read(from: &buf),
-                axisU: FfiConverterTypeVec3F.read(from: &buf),
-                axisV: FfiConverterTypeVec3F.read(from: &buf),
+                origin: FfiConverterTypeVec3F.read(from: &buf), 
+                axisU: FfiConverterTypeVec3F.read(from: &buf), 
+                axisV: FfiConverterTypeVec3F.read(from: &buf), 
                 normal: FfiConverterTypeVec3F.read(from: &buf)
         )
     }
@@ -1202,9 +1202,9 @@ public struct CanvasSnapshotF: Equatable, Hashable {
         self.dabCount = dabCount
     }
 
+    
 
-
-
+    
 }
 
 #if compiler(>=6)
@@ -1218,8 +1218,8 @@ public struct FfiConverterTypeCanvasSnapshotF: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CanvasSnapshotF {
         return
             try CanvasSnapshotF(
-                frame: FfiConverterOptionTypeCanvasFrameF.read(from: &buf),
-                strokes: FfiConverterSequenceTypeStrokeF.read(from: &buf),
+                frame: FfiConverterOptionTypeCanvasFrameF.read(from: &buf), 
+                strokes: FfiConverterSequenceTypeStrokeF.read(from: &buf), 
                 dabCount: FfiConverterUInt32.read(from: &buf)
         )
     }
@@ -1265,9 +1265,9 @@ public struct ColorF: Equatable, Hashable {
         self.a = a
     }
 
+    
 
-
-
+    
 }
 
 #if compiler(>=6)
@@ -1281,9 +1281,9 @@ public struct FfiConverterTypeColorF: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ColorF {
         return
             try ColorF(
-                r: FfiConverterUInt8.read(from: &buf),
-                g: FfiConverterUInt8.read(from: &buf),
-                b: FfiConverterUInt8.read(from: &buf),
+                r: FfiConverterUInt8.read(from: &buf), 
+                g: FfiConverterUInt8.read(from: &buf), 
+                b: FfiConverterUInt8.read(from: &buf), 
                 a: FfiConverterUInt8.read(from: &buf)
         )
     }
@@ -1345,20 +1345,20 @@ public struct DabF: Equatable, Hashable {
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(u: Float, v: Float,
+    public init(u: Float, v: Float, 
         /**
          * Ellipse semi-axes, meters. `radius_major_m` lies along the spray tilt.
-         */radiusMajorM: Float, radiusMinorM: Float,
+         */radiusMajorM: Float, radiusMinorM: Float, 
         /**
          * Major-axis angle in wall-local radians.
-         */rotationRad: Float,
+         */rotationRad: Float, 
         /**
          * Unit vector toward the denser (near) side, wall-local.
          * (0, 0) when the dab has no directional density falloff.
-         */gradientU: Float, gradientV: Float,
+         */gradientU: Float, gradientV: Float, 
         /**
          * 0..1 per-dab alpha before color application.
-         */opacity: Float,
+         */opacity: Float, 
         /**
          * Edge softness 0..1 (0 = crisp, 1 = very soft halo).
          */softness: Float) {
@@ -1373,9 +1373,9 @@ public struct DabF: Equatable, Hashable {
         self.softness = softness
     }
 
+    
 
-
-
+    
 }
 
 #if compiler(>=6)
@@ -1389,14 +1389,14 @@ public struct FfiConverterTypeDabF: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DabF {
         return
             try DabF(
-                u: FfiConverterFloat.read(from: &buf),
-                v: FfiConverterFloat.read(from: &buf),
-                radiusMajorM: FfiConverterFloat.read(from: &buf),
-                radiusMinorM: FfiConverterFloat.read(from: &buf),
-                rotationRad: FfiConverterFloat.read(from: &buf),
-                gradientU: FfiConverterFloat.read(from: &buf),
-                gradientV: FfiConverterFloat.read(from: &buf),
-                opacity: FfiConverterFloat.read(from: &buf),
+                u: FfiConverterFloat.read(from: &buf), 
+                v: FfiConverterFloat.read(from: &buf), 
+                radiusMajorM: FfiConverterFloat.read(from: &buf), 
+                radiusMinorM: FfiConverterFloat.read(from: &buf), 
+                rotationRad: FfiConverterFloat.read(from: &buf), 
+                gradientU: FfiConverterFloat.read(from: &buf), 
+                gradientV: FfiConverterFloat.read(from: &buf), 
+                opacity: FfiConverterFloat.read(from: &buf), 
                 softness: FfiConverterFloat.read(from: &buf)
         )
     }
@@ -1448,10 +1448,10 @@ public struct DripF: Equatable, Hashable {
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(u: Float, v: Float,
+    public init(u: Float, v: Float, 
         /**
          * Run length downward, meters.
-         */lenM: Float,
+         */lenM: Float, 
         /**
          * Streak width, meters.
          */widthM: Float, opacity: Float) {
@@ -1462,9 +1462,9 @@ public struct DripF: Equatable, Hashable {
         self.opacity = opacity
     }
 
+    
 
-
-
+    
 }
 
 #if compiler(>=6)
@@ -1478,10 +1478,10 @@ public struct FfiConverterTypeDripF: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DripF {
         return
             try DripF(
-                u: FfiConverterFloat.read(from: &buf),
-                v: FfiConverterFloat.read(from: &buf),
-                lenM: FfiConverterFloat.read(from: &buf),
-                widthM: FfiConverterFloat.read(from: &buf),
+                u: FfiConverterFloat.read(from: &buf), 
+                v: FfiConverterFloat.read(from: &buf), 
+                lenM: FfiConverterFloat.read(from: &buf), 
+                widthM: FfiConverterFloat.read(from: &buf), 
                 opacity: FfiConverterFloat.read(from: &buf)
         )
     }
@@ -1555,23 +1555,23 @@ public struct FrameInputF: Equatable, Hashable {
     public init(
         /**
          * Camera world position.
-         */cameraPosition: Vec3F,
+         */cameraPosition: Vec3F, 
         /**
          * Center-of-view ray (the "spray nozzle"): origin + unit direction.
          * Normally the camera position and forward vector.
-         */rayOrigin: Vec3F, rayDir: Vec3F,
+         */rayOrigin: Vec3F, rayDir: Vec3F, 
         /**
          * Plane anchors added or updated since the last tick.
-         */planeUpserts: [PlaneObservationF],
+         */planeUpserts: [PlaneObservationF], 
         /**
          * Plane anchor ids removed since the last tick.
-         */planeRemovals: [UInt64],
+         */planeRemovals: [UInt64], 
         /**
          * Scene-depth sample at screen center in meters (LiDAR devices only).
-         */lidarCenterDepthM: Float?, tracking: TrackingStateF,
+         */lidarCenterDepthM: Float?, tracking: TrackingStateF, 
         /**
          * True while the user holds the spray button.
-         */spraying: Bool,
+         */spraying: Bool, 
         /**
          * Frame delta time, seconds. Drives hand-speed thinning, dwell
          * stamping and can-shake decay. 0 is treated as ~1/60 s.
@@ -1587,9 +1587,9 @@ public struct FrameInputF: Equatable, Hashable {
         self.dtSeconds = dtSeconds
     }
 
+    
 
-
-
+    
 }
 
 #if compiler(>=6)
@@ -1603,14 +1603,14 @@ public struct FfiConverterTypeFrameInputF: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FrameInputF {
         return
             try FrameInputF(
-                cameraPosition: FfiConverterTypeVec3F.read(from: &buf),
-                rayOrigin: FfiConverterTypeVec3F.read(from: &buf),
-                rayDir: FfiConverterTypeVec3F.read(from: &buf),
-                planeUpserts: FfiConverterSequenceTypePlaneObservationF.read(from: &buf),
-                planeRemovals: FfiConverterSequenceUInt64.read(from: &buf),
-                lidarCenterDepthM: FfiConverterOptionFloat.read(from: &buf),
-                tracking: FfiConverterTypeTrackingStateF.read(from: &buf),
-                spraying: FfiConverterBool.read(from: &buf),
+                cameraPosition: FfiConverterTypeVec3F.read(from: &buf), 
+                rayOrigin: FfiConverterTypeVec3F.read(from: &buf), 
+                rayDir: FfiConverterTypeVec3F.read(from: &buf), 
+                planeUpserts: FfiConverterSequenceTypePlaneObservationF.read(from: &buf), 
+                planeRemovals: FfiConverterSequenceUInt64.read(from: &buf), 
+                lidarCenterDepthM: FfiConverterOptionFloat.read(from: &buf), 
+                tracking: FfiConverterTypeTrackingStateF.read(from: &buf), 
+                spraying: FfiConverterBool.read(from: &buf), 
                 dtSeconds: FfiConverterFloat.read(from: &buf)
         )
     }
@@ -1694,31 +1694,31 @@ public struct FrameOutputF: Equatable, Hashable {
     public init(
         /**
          * Wall currently under the center ray (lock candidate).
-         */aimedWallId: UInt64?,
+         */aimedWallId: UInt64?, 
         /**
          * Locked wall id, if any.
-         */lockedWallId: UInt64?,
+         */lockedWallId: UInt64?, 
         /**
          * Smoothed camera->wall distance along the view ray.
-         */distanceM: Float?,
+         */distanceM: Float?, 
         /**
          * 0..1 reliability of `distance_m`.
-         */distanceReliability: Float,
+         */distanceReliability: Float, 
         /**
          * Distance estimate fused a LiDAR depth sample this frame.
-         */distanceLidarFused: Bool,
+         */distanceLidarFused: Bool, 
         /**
          * Spray point in the locked wall's local coordinates this frame.
-         */sprayUv: Vec2F?,
+         */sprayUv: Vec2F?, 
         /**
          * Number of dabs appended during this tick.
-         */dabsAdded: UInt32,
+         */dabsAdded: UInt32, 
         /**
          * Canvas changed since the last `canvas_snapshot` worth re-rendering.
-         */canvasDirty: Bool,
+         */canvasDirty: Bool, 
         /**
          * A stroke is currently being painted.
-         */strokeActive: Bool,
+         */strokeActive: Bool, 
         /**
          * Core spray truth for haptics/UI, every frame.
          */spray: SprayStateF) {
@@ -1734,9 +1734,9 @@ public struct FrameOutputF: Equatable, Hashable {
         self.spray = spray
     }
 
+    
 
-
-
+    
 }
 
 #if compiler(>=6)
@@ -1750,15 +1750,15 @@ public struct FfiConverterTypeFrameOutputF: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FrameOutputF {
         return
             try FrameOutputF(
-                aimedWallId: FfiConverterOptionUInt64.read(from: &buf),
-                lockedWallId: FfiConverterOptionUInt64.read(from: &buf),
-                distanceM: FfiConverterOptionFloat.read(from: &buf),
-                distanceReliability: FfiConverterFloat.read(from: &buf),
-                distanceLidarFused: FfiConverterBool.read(from: &buf),
-                sprayUv: FfiConverterOptionTypeVec2F.read(from: &buf),
-                dabsAdded: FfiConverterUInt32.read(from: &buf),
-                canvasDirty: FfiConverterBool.read(from: &buf),
-                strokeActive: FfiConverterBool.read(from: &buf),
+                aimedWallId: FfiConverterOptionUInt64.read(from: &buf), 
+                lockedWallId: FfiConverterOptionUInt64.read(from: &buf), 
+                distanceM: FfiConverterOptionFloat.read(from: &buf), 
+                distanceReliability: FfiConverterFloat.read(from: &buf), 
+                distanceLidarFused: FfiConverterBool.read(from: &buf), 
+                sprayUv: FfiConverterOptionTypeVec2F.read(from: &buf), 
+                dabsAdded: FfiConverterUInt32.read(from: &buf), 
+                canvasDirty: FfiConverterBool.read(from: &buf), 
+                strokeActive: FfiConverterBool.read(from: &buf), 
                 spray: FfiConverterTypeSprayStateF.read(from: &buf)
         )
     }
@@ -1811,7 +1811,7 @@ public struct GeoPointF: Equatable, Hashable {
     public init(
         /**
          * Latitude in degrees, -90..90.
-         */lat: Double,
+         */lat: Double, 
         /**
          * Longitude in degrees, -180..180.
          */lon: Double) {
@@ -1819,9 +1819,9 @@ public struct GeoPointF: Equatable, Hashable {
         self.lon = lon
     }
 
+    
 
-
-
+    
 }
 
 #if compiler(>=6)
@@ -1835,7 +1835,7 @@ public struct FfiConverterTypeGeoPointF: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> GeoPointF {
         return
             try GeoPointF(
-                lat: FfiConverterDouble.read(from: &buf),
+                lat: FfiConverterDouble.read(from: &buf), 
                 lon: FfiConverterDouble.read(from: &buf)
         )
     }
@@ -1892,13 +1892,13 @@ public struct MapSpotF: Equatable, Hashable {
     public init(
         /**
          * Stable identifier (seed id, provider id, or local work id).
-         */id: String, kind: MapSpotKindF, position: GeoPointF,
+         */id: String, kind: MapSpotKindF, position: GeoPointF, 
         /**
          * Display name — spot name or work title.
-         */title: String,
+         */title: String, 
         /**
          * Secondary line — author name, spot description, date, …
-         */subtitle: String?,
+         */subtitle: String?, 
         /**
          * External SNS link for the author (work pins only).
          */authorUrl: String?) {
@@ -1910,9 +1910,9 @@ public struct MapSpotF: Equatable, Hashable {
         self.authorUrl = authorUrl
     }
 
+    
 
-
-
+    
 }
 
 #if compiler(>=6)
@@ -1926,11 +1926,11 @@ public struct FfiConverterTypeMapSpotF: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MapSpotF {
         return
             try MapSpotF(
-                id: FfiConverterString.read(from: &buf),
-                kind: FfiConverterTypeMapSpotKindF.read(from: &buf),
-                position: FfiConverterTypeGeoPointF.read(from: &buf),
-                title: FfiConverterString.read(from: &buf),
-                subtitle: FfiConverterOptionString.read(from: &buf),
+                id: FfiConverterString.read(from: &buf), 
+                kind: FfiConverterTypeMapSpotKindF.read(from: &buf), 
+                position: FfiConverterTypeGeoPointF.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                subtitle: FfiConverterOptionString.read(from: &buf), 
                 authorUrl: FfiConverterOptionString.read(from: &buf)
         )
     }
@@ -1973,7 +1973,7 @@ public struct NamedEntryF: Equatable, Hashable {
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(index: UInt8,
+    public init(index: UInt8, 
         /**
          * Japanese display label.
          */name: String) {
@@ -1981,9 +1981,9 @@ public struct NamedEntryF: Equatable, Hashable {
         self.name = name
     }
 
+    
 
-
-
+    
 }
 
 #if compiler(>=6)
@@ -1997,7 +1997,7 @@ public struct FfiConverterTypeNamedEntryF: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NamedEntryF {
         return
             try NamedEntryF(
-                index: FfiConverterUInt8.read(from: &buf),
+                index: FfiConverterUInt8.read(from: &buf), 
                 name: FfiConverterString.read(from: &buf)
         )
     }
@@ -2044,9 +2044,9 @@ public struct PaletteEntryF: Equatable, Hashable {
         self.color = color
     }
 
+    
 
-
-
+    
 }
 
 #if compiler(>=6)
@@ -2060,7 +2060,7 @@ public struct FfiConverterTypePaletteEntryF: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PaletteEntryF {
         return
             try PaletteEntryF(
-                name: FfiConverterString.read(from: &buf),
+                name: FfiConverterString.read(from: &buf), 
                 color: FfiConverterTypeColorF.read(from: &buf)
         )
     }
@@ -2113,9 +2113,9 @@ public struct PlaneObservationF: Equatable, Hashable {
         self.halfExtentV = halfExtentV
     }
 
+    
 
-
-
+    
 }
 
 #if compiler(>=6)
@@ -2129,11 +2129,11 @@ public struct FfiConverterTypePlaneObservationF: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PlaneObservationF {
         return
             try PlaneObservationF(
-                id: FfiConverterUInt64.read(from: &buf),
-                center: FfiConverterTypeVec3F.read(from: &buf),
-                normal: FfiConverterTypeVec3F.read(from: &buf),
-                axisU: FfiConverterTypeVec3F.read(from: &buf),
-                halfExtentU: FfiConverterFloat.read(from: &buf),
+                id: FfiConverterUInt64.read(from: &buf), 
+                center: FfiConverterTypeVec3F.read(from: &buf), 
+                normal: FfiConverterTypeVec3F.read(from: &buf), 
+                axisU: FfiConverterTypeVec3F.read(from: &buf), 
+                halfExtentU: FfiConverterFloat.read(from: &buf), 
                 halfExtentV: FfiConverterFloat.read(from: &buf)
         )
     }
@@ -2195,16 +2195,16 @@ public struct SprayStateF: Equatable, Hashable {
     public init(
         /**
          * Paint is actually leaving the nozzle right now.
-         */spraying: Bool,
+         */spraying: Bool, 
         /**
          * Active spray mode.
-         */mode: SprayModeF,
+         */mode: SprayModeF, 
         /**
          * Normalized paint flow 0..1 — haptics intensity.
-         */flow: Float,
+         */flow: Float, 
         /**
          * Base per-dab alpha 0..1 — haptics sharpness.
-         */density: Float,
+         */density: Float, 
         /**
          * Can-shake level 0..1 (1 = freshly shaken). Low in Real mode = かすれ.
          */shakeLevel: Float) {
@@ -2215,9 +2215,9 @@ public struct SprayStateF: Equatable, Hashable {
         self.shakeLevel = shakeLevel
     }
 
+    
 
-
-
+    
 }
 
 #if compiler(>=6)
@@ -2231,10 +2231,10 @@ public struct FfiConverterTypeSprayStateF: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SprayStateF {
         return
             try SprayStateF(
-                spraying: FfiConverterBool.read(from: &buf),
-                mode: FfiConverterTypeSprayModeF.read(from: &buf),
-                flow: FfiConverterFloat.read(from: &buf),
-                density: FfiConverterFloat.read(from: &buf),
+                spraying: FfiConverterBool.read(from: &buf), 
+                mode: FfiConverterTypeSprayModeF.read(from: &buf), 
+                flow: FfiConverterFloat.read(from: &buf), 
+                density: FfiConverterFloat.read(from: &buf), 
                 shakeLevel: FfiConverterFloat.read(from: &buf)
         )
     }
@@ -2278,7 +2278,7 @@ public struct StrokeF: Equatable, Hashable {
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(paletteIndex: UInt8, color: ColorF, dabs: [DabF],
+    public init(paletteIndex: UInt8, color: ColorF, dabs: [DabF], 
         /**
          * Drip streaks spawned by this stroke's oversaturation.
          */drips: [DripF]) {
@@ -2288,9 +2288,9 @@ public struct StrokeF: Equatable, Hashable {
         self.drips = drips
     }
 
+    
 
-
-
+    
 }
 
 #if compiler(>=6)
@@ -2304,9 +2304,9 @@ public struct FfiConverterTypeStrokeF: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> StrokeF {
         return
             try StrokeF(
-                paletteIndex: FfiConverterUInt8.read(from: &buf),
-                color: FfiConverterTypeColorF.read(from: &buf),
-                dabs: FfiConverterSequenceTypeDabF.read(from: &buf),
+                paletteIndex: FfiConverterUInt8.read(from: &buf), 
+                color: FfiConverterTypeColorF.read(from: &buf), 
+                dabs: FfiConverterSequenceTypeDabF.read(from: &buf), 
                 drips: FfiConverterSequenceTypeDripF.read(from: &buf)
         )
     }
@@ -2349,9 +2349,9 @@ public struct Vec2F: Equatable, Hashable {
         self.y = y
     }
 
+    
 
-
-
+    
 }
 
 #if compiler(>=6)
@@ -2365,7 +2365,7 @@ public struct FfiConverterTypeVec2F: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Vec2F {
         return
             try Vec2F(
-                x: FfiConverterFloat.read(from: &buf),
+                x: FfiConverterFloat.read(from: &buf), 
                 y: FfiConverterFloat.read(from: &buf)
         )
     }
@@ -2408,9 +2408,9 @@ public struct Vec3F: Equatable, Hashable {
         self.z = z
     }
 
+    
 
-
-
+    
 }
 
 #if compiler(>=6)
@@ -2424,8 +2424,8 @@ public struct FfiConverterTypeVec3F: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Vec3F {
         return
             try Vec3F(
-                x: FfiConverterFloat.read(from: &buf),
-                y: FfiConverterFloat.read(from: &buf),
+                x: FfiConverterFloat.read(from: &buf), 
+                y: FfiConverterFloat.read(from: &buf), 
                 z: FfiConverterFloat.read(from: &buf)
         )
     }
@@ -2456,24 +2456,24 @@ public func FfiConverterTypeVec3F_lower(_ value: Vec3F) -> RustBuffer {
 /**
  * Engine errors surfaced across the FFI.
  */
-public
+public 
 enum CoreError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
 
-
-
+    
+    
     case CorruptData(String
     )
     case NoWallLocked
 
+    
 
+    
 
-
-
-
+    
     public var errorDescription: String? {
         String(reflecting: self)
     }
-
+    
 }
 
 #if compiler(>=6)
@@ -2490,9 +2490,9 @@ public struct FfiConverterTypeCoreError: FfiConverterRustBuffer {
         let variant: Int32 = try readInt(&buf)
         switch variant {
 
+        
 
-
-
+        
         case 1: return .CorruptData(
             try FfiConverterString.read(from: &buf)
             )
@@ -2505,18 +2505,18 @@ public struct FfiConverterTypeCoreError: FfiConverterRustBuffer {
     public static func write(_ value: CoreError, into buf: inout [UInt8]) {
         switch value {
 
+        
 
-
-
-
+        
+        
         case let .CorruptData(v1):
             writeInt(&buf, Int32(1))
             FfiConverterString.write(v1, into: &buf)
-
-
+            
+        
         case .NoWallLocked:
             writeInt(&buf, Int32(2))
-
+        
         }
     }
 }
@@ -2542,7 +2542,7 @@ public func FfiConverterTypeCoreError_lower(_ value: CoreError) -> RustBuffer {
  */
 
 public enum MapSpotKindF: Equatable, Hashable {
-
+    
     /**
      * 公認ウォール — a spot where painting is permitted.
      */
@@ -2575,32 +2575,32 @@ public struct FfiConverterTypeMapSpotKindF: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MapSpotKindF {
         let variant: Int32 = try readInt(&buf)
         switch variant {
-
+        
         case 1: return .legalWall
-
+        
         case 2: return .workMine
-
+        
         case 3: return .workOther
-
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
 
     public static func write(_ value: MapSpotKindF, into buf: inout [UInt8]) {
         switch value {
-
-
+        
+        
         case .legalWall:
             writeInt(&buf, Int32(1))
-
-
+        
+        
         case .workMine:
             writeInt(&buf, Int32(2))
-
-
+        
+        
         case .workOther:
             writeInt(&buf, Int32(3))
-
+        
         }
     }
 }
@@ -2628,7 +2628,7 @@ public func FfiConverterTypeMapSpotKindF_lower(_ value: MapSpotKindF) -> RustBuf
  */
 
 public enum SprayModeF: Equatable, Hashable {
-
+    
     case casual
     case real
 
@@ -2651,26 +2651,26 @@ public struct FfiConverterTypeSprayModeF: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SprayModeF {
         let variant: Int32 = try readInt(&buf)
         switch variant {
-
+        
         case 1: return .casual
-
+        
         case 2: return .real
-
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
 
     public static func write(_ value: SprayModeF, into buf: inout [UInt8]) {
         switch value {
-
-
+        
+        
         case .casual:
             writeInt(&buf, Int32(1))
-
-
+        
+        
         case .real:
             writeInt(&buf, Int32(2))
-
+        
         }
     }
 }
@@ -2697,7 +2697,7 @@ public func FfiConverterTypeSprayModeF_lower(_ value: SprayModeF) -> RustBuffer 
  */
 
 public enum TrackingStateF: Equatable, Hashable {
-
+    
     case normal
     case limited
     case notAvailable
@@ -2721,32 +2721,32 @@ public struct FfiConverterTypeTrackingStateF: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TrackingStateF {
         let variant: Int32 = try readInt(&buf)
         switch variant {
-
+        
         case 1: return .normal
-
+        
         case 2: return .limited
-
+        
         case 3: return .notAvailable
-
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
 
     public static func write(_ value: TrackingStateF, into buf: inout [UInt8]) {
         switch value {
-
-
+        
+        
         case .normal:
             writeInt(&buf, Int32(1))
-
-
+        
+        
         case .limited:
             writeInt(&buf, Int32(2))
-
-
+        
+        
         case .notAvailable:
             writeInt(&buf, Int32(3))
-
+        
         }
     }
 }
