@@ -117,8 +117,9 @@ final class WallCanvasRenderer {
         bitmapBounds = bounds
 
         guard let image = bitmap.makeImage(),
-              let texture = try? TextureResource.generate(
-                  from: image,
+              let texture = try? TextureResource(
+                  image: image,
+                  withName: nil,
                   options: .init(semantic: .color)
               )
         else { return }

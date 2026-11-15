@@ -3,7 +3,7 @@ import Foundation
 /// 他人の作品ピンの供給元。
 /// フェーズ2の作品インデックスはこのプロトコルの実装を差し替えるだけで
 /// よく、マップ画面側のコードは変わらない。
-protocol WorkPinProvider {
+protocol WorkPinProvider: Sendable {
     /// `center` 周辺の他人の作品ピン。`center == nil` は位置未取得を意味し、
     /// その場合の挙動（全件・空等）は実装側の自由。
     func workPins(near center: GeoPointF?) async -> [MapSpotF]
