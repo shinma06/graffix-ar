@@ -10,6 +10,7 @@ uniffi::setup_scaffolding!();
 mod canvas;
 mod distance;
 pub mod engine;
+pub mod export;
 pub mod ffi;
 pub mod geo;
 mod math;

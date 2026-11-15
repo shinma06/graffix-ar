@@ -1137,6 +1137,17 @@ public protocol SavedWorkProtocol: AnyObject, Sendable {
      */
     func renderTimelapseFrame(tMs: UInt32, scene: SceneConfigF, width: UInt32, height: UInt32)  -> RasterImageF
     
+    /**
+     * An export job rendering the timelapse video frames in `scene`.
+     */
+    func timelapseExport(request: TimelapseExportRequestF, scene: SceneConfigF)  -> TimelapseExport
+    
+    /**
+     * What exporting the timelapse as a video would produce (frame count,
+     * length, size, speed-up for long works) — for the UI before exporting.
+     */
+    func timelapseExportPlan(request: TimelapseExportRequestF)  -> TimelapseExportPlanF
+    
     func timelapseProgress(tMs: UInt32)  -> TimelapseProgressF
     
 }
@@ -1247,6 +1258,34 @@ open func renderTimelapseFrame(tMs: UInt32, scene: SceneConfigF, width: UInt32, 
 })
 }
     
+    /**
+     * An export job rendering the timelapse video frames in `scene`.
+     */
+open func timelapseExport(request: TimelapseExportRequestF, scene: SceneConfigF) -> TimelapseExport  {
+    return try!  FfiConverterTypeTimelapseExport_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_graffix_core_fn_method_savedwork_timelapse_export(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeTimelapseExportRequestF_lower(request),
+        FfiConverterTypeSceneConfigF_lower(scene),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * What exporting the timelapse as a video would produce (frame count,
+     * length, size, speed-up for long works) — for the UI before exporting.
+     */
+open func timelapseExportPlan(request: TimelapseExportRequestF) -> TimelapseExportPlanF  {
+    return try!  FfiConverterTypeTimelapseExportPlanF_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_graffix_core_fn_method_savedwork_timelapse_export_plan(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeTimelapseExportRequestF_lower(request),uniffiCallStatus
+    )
+})
+}
+    
 open func timelapseProgress(tMs: UInt32) -> TimelapseProgressF  {
     return try!  FfiConverterTypeTimelapseProgressF_lift(try! rustCall() {
         uniffiCallStatus in
@@ -1300,6 +1339,153 @@ public func FfiConverterTypeSavedWork_lift(_ handle: UInt64) throws -> SavedWork
 #endif
 public func FfiConverterTypeSavedWork_lower(_ value: SavedWork) -> UInt64 {
     return FfiConverterTypeSavedWork.lower(value)
+}
+
+
+
+
+
+
+/**
+ * One export job: renders the video frames of a saved work in order. Has
+ * its own replay cache, so it does not disturb the on-screen player.
+ */
+public protocol TimelapseExportProtocol: AnyObject, Sendable {
+    
+    func plan()  -> TimelapseExportPlanF
+    
+    /**
+     * Video frame `index` (0-based) at the plan's size. Rendering in order
+     * is incremental; hold frames (index >= replay frame count) are the
+     * finished work.
+     */
+    func renderFrame(index: UInt32)  -> RasterImageF
+    
+}
+/**
+ * One export job: renders the video frames of a saved work in order. Has
+ * its own replay cache, so it does not disturb the on-screen player.
+ */
+open class TimelapseExport: TimelapseExportProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_graffix_core_fn_clone_timelapseexport(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_graffix_core_fn_free_timelapseexport(handle, $0) }
+    }
+
+    
+
+    
+open func plan() -> TimelapseExportPlanF  {
+    return try!  FfiConverterTypeTimelapseExportPlanF_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_graffix_core_fn_method_timelapseexport_plan(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Video frame `index` (0-based) at the plan's size. Rendering in order
+     * is incremental; hold frames (index >= replay frame count) are the
+     * finished work.
+     */
+open func renderFrame(index: UInt32) -> RasterImageF  {
+    return try!  FfiConverterTypeRasterImageF_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_graffix_core_fn_method_timelapseexport_render_frame(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt32.lower(index),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeTimelapseExport: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = TimelapseExport
+
+    public static func lift(_ handle: UInt64) throws -> TimelapseExport {
+        return TimelapseExport(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: TimelapseExport) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TimelapseExport {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: TimelapseExport, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTimelapseExport_lift(_ handle: UInt64) throws -> TimelapseExport {
+    return try FfiConverterTypeTimelapseExport.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTimelapseExport_lower(_ value: TimelapseExport) -> UInt64 {
+    return FfiConverterTypeTimelapseExport.lower(value)
 }
 
 
@@ -2965,6 +3151,226 @@ public func FfiConverterTypeStrokeF_lower(_ value: StrokeF) -> RustBuffer {
 }
 
 
+/**
+ * The video that will be written.
+ */
+public struct TimelapseExportPlanF: Equatable, Hashable {
+    /**
+     * Even, aspect-preserving, within `MIN_SIDE..=MAX_SIDE`.
+     */
+    public var width: UInt32
+    public var height: UInt32
+    public var fps: UInt32
+    /**
+     * Frames that show the replay; the last one is the finished work.
+     */
+    public var replayFrameCount: UInt32
+    /**
+     * Extra frames repeating the finished work.
+     */
+    public var holdFrameCount: UInt32
+    public var totalFrameCount: UInt32
+    /**
+     * `total_frame_count` frames of `1 / fps` s each, ms.
+     */
+    public var videoDurationMs: UInt32
+    /**
+     * Timelapse (replay) length being covered, ms.
+     */
+    public var replayDurationMs: UInt32
+    /**
+     * Speed actually used.
+     */
+    public var speed: Float
+    /**
+     * Speed asked for, after clamping.
+     */
+    public var requestedSpeed: Float
+    /**
+     * `speed` > `requested_speed` to stay within `max_video_ms`.
+     */
+    public var spedUp: Bool
+    public var maxVideoMs: UInt32
+    public var averageBitrateBps: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Even, aspect-preserving, within `MIN_SIDE..=MAX_SIDE`.
+         */width: UInt32, height: UInt32, fps: UInt32, 
+        /**
+         * Frames that show the replay; the last one is the finished work.
+         */replayFrameCount: UInt32, 
+        /**
+         * Extra frames repeating the finished work.
+         */holdFrameCount: UInt32, totalFrameCount: UInt32, 
+        /**
+         * `total_frame_count` frames of `1 / fps` s each, ms.
+         */videoDurationMs: UInt32, 
+        /**
+         * Timelapse (replay) length being covered, ms.
+         */replayDurationMs: UInt32, 
+        /**
+         * Speed actually used.
+         */speed: Float, 
+        /**
+         * Speed asked for, after clamping.
+         */requestedSpeed: Float, 
+        /**
+         * `speed` > `requested_speed` to stay within `max_video_ms`.
+         */spedUp: Bool, maxVideoMs: UInt32, averageBitrateBps: UInt32) {
+        self.width = width
+        self.height = height
+        self.fps = fps
+        self.replayFrameCount = replayFrameCount
+        self.holdFrameCount = holdFrameCount
+        self.totalFrameCount = totalFrameCount
+        self.videoDurationMs = videoDurationMs
+        self.replayDurationMs = replayDurationMs
+        self.speed = speed
+        self.requestedSpeed = requestedSpeed
+        self.spedUp = spedUp
+        self.maxVideoMs = maxVideoMs
+        self.averageBitrateBps = averageBitrateBps
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension TimelapseExportPlanF: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeTimelapseExportPlanF: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TimelapseExportPlanF {
+        return
+            try TimelapseExportPlanF(
+                width: FfiConverterUInt32.read(from: &buf), 
+                height: FfiConverterUInt32.read(from: &buf), 
+                fps: FfiConverterUInt32.read(from: &buf), 
+                replayFrameCount: FfiConverterUInt32.read(from: &buf), 
+                holdFrameCount: FfiConverterUInt32.read(from: &buf), 
+                totalFrameCount: FfiConverterUInt32.read(from: &buf), 
+                videoDurationMs: FfiConverterUInt32.read(from: &buf), 
+                replayDurationMs: FfiConverterUInt32.read(from: &buf), 
+                speed: FfiConverterFloat.read(from: &buf), 
+                requestedSpeed: FfiConverterFloat.read(from: &buf), 
+                spedUp: FfiConverterBool.read(from: &buf), 
+                maxVideoMs: FfiConverterUInt32.read(from: &buf), 
+                averageBitrateBps: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: TimelapseExportPlanF, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.width, into: &buf)
+        FfiConverterUInt32.write(value.height, into: &buf)
+        FfiConverterUInt32.write(value.fps, into: &buf)
+        FfiConverterUInt32.write(value.replayFrameCount, into: &buf)
+        FfiConverterUInt32.write(value.holdFrameCount, into: &buf)
+        FfiConverterUInt32.write(value.totalFrameCount, into: &buf)
+        FfiConverterUInt32.write(value.videoDurationMs, into: &buf)
+        FfiConverterUInt32.write(value.replayDurationMs, into: &buf)
+        FfiConverterFloat.write(value.speed, into: &buf)
+        FfiConverterFloat.write(value.requestedSpeed, into: &buf)
+        FfiConverterBool.write(value.spedUp, into: &buf)
+        FfiConverterUInt32.write(value.maxVideoMs, into: &buf)
+        FfiConverterUInt32.write(value.averageBitrateBps, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTimelapseExportPlanF_lift(_ buf: RustBuffer) throws -> TimelapseExportPlanF {
+    return try FfiConverterTypeTimelapseExportPlanF.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTimelapseExportPlanF_lower(_ value: TimelapseExportPlanF) -> RustBuffer {
+    return FfiConverterTypeTimelapseExportPlanF.lower(value)
+}
+
+
+/**
+ * What the caller asks for; every field is clamped to a supported value.
+ */
+public struct TimelapseExportRequestF: Equatable, Hashable {
+    public var width: UInt32
+    public var height: UInt32
+    public var fps: UInt32
+    /**
+     * Replay speed multiplier (the player's ×1 / ×2 / ×4 / ×8).
+     */
+    public var speed: Float
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(width: UInt32, height: UInt32, fps: UInt32, 
+        /**
+         * Replay speed multiplier (the player's ×1 / ×2 / ×4 / ×8).
+         */speed: Float) {
+        self.width = width
+        self.height = height
+        self.fps = fps
+        self.speed = speed
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension TimelapseExportRequestF: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeTimelapseExportRequestF: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TimelapseExportRequestF {
+        return
+            try TimelapseExportRequestF(
+                width: FfiConverterUInt32.read(from: &buf), 
+                height: FfiConverterUInt32.read(from: &buf), 
+                fps: FfiConverterUInt32.read(from: &buf), 
+                speed: FfiConverterFloat.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: TimelapseExportRequestF, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.width, into: &buf)
+        FfiConverterUInt32.write(value.height, into: &buf)
+        FfiConverterUInt32.write(value.fps, into: &buf)
+        FfiConverterFloat.write(value.speed, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTimelapseExportRequestF_lift(_ buf: RustBuffer) throws -> TimelapseExportRequestF {
+    return try FfiConverterTypeTimelapseExportRequestF.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTimelapseExportRequestF_lower(_ value: TimelapseExportRequestF) -> RustBuffer {
+    return FfiConverterTypeTimelapseExportRequestF.lower(value)
+}
+
+
 public struct TimelapseProgressF: Equatable, Hashable {
     public var completedStrokes: UInt32
     public var activeStroke: UInt32?
@@ -4174,6 +4580,17 @@ fileprivate struct FfiConverterSequenceTypeMapSpotKindF: FfiConverterRustBuffer 
     }
 }
 /**
+ * Default request values for the export UI.
+ */
+public func defaultTimelapseExportRequest(speed: Float) -> TimelapseExportRequestF  {
+    return try!  FfiConverterTypeTimelapseExportRequestF_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_graffix_core_fn_func_default_timelapse_export_request(
+        FfiConverterFloat.lower(speed),uniffiCallStatus
+    )
+})
+}
+/**
  * Great-circle distance between two coordinates in meters (haversine).
  */
 public func haversineM(a: GeoPointF, b: GeoPointF) -> Double  {
@@ -4228,6 +4645,9 @@ private let initializationResult: InitializationResult = {
     let scaffolding_contract_version = ffi_graffix_core_uniffi_contract_version()
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
+    }
+    if (uniffi_graffix_core_checksum_func_default_timelapse_export_request() != 5749) {
+        return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_graffix_core_checksum_func_haversine_m() != 24528) {
         return InitializationResult.apiChecksumMismatch
@@ -4316,6 +4736,12 @@ private let initializationResult: InitializationResult = {
     if (uniffi_graffix_core_checksum_method_engine_wall_count() != 16378) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_graffix_core_checksum_method_timelapseexport_plan() != 6195) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_graffix_core_checksum_method_timelapseexport_render_frame() != 25309) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_graffix_core_checksum_method_savedwork_info() != 28855) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -4323,6 +4749,12 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_graffix_core_checksum_method_savedwork_render_timelapse_frame() != 45880) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_graffix_core_checksum_method_savedwork_timelapse_export() != 62947) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_graffix_core_checksum_method_savedwork_timelapse_export_plan() != 55650) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_graffix_core_checksum_method_savedwork_timelapse_progress() != 23400) {

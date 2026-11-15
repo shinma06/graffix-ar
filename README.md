@@ -22,11 +22,22 @@
   どおりに再生（再生/一時停止・シーク・×1〜×8）。長い待ち時間は
   400 ms に圧縮。時刻を持たない旧（v1/v2）作品は描いた順に一定速度で
   再生する。
+- **タイムラプス動画の書き出し** — 再生中の速度（×1〜×8）で描画過程を
+  MP4（H.264、1080×810・30 fps）に書き出し、共有シートで SNS・写真
+  ライブラリ・AirDrop などへ渡す。最後に完成した作品を 1.5 秒静止表示し、
+  全体が 60 秒を超える長い作品は収まるよう自動で速度を上げる（画面に
+  実際の速度を表示）。書き出し中は進捗表示とキャンセルが可能。完全に
+  ローカル（通信なし、一時ファイルは次回の書き出しで削除）。
 
 合成・照明・視距離のフレーミング・再生スケジュールはすべてコアの
 `SavedWork`（`core/src/work.rs` → `raster.rs` / `scene.rs` /
 `timelapse.rs`）が計算して RGBA 画像を返し、シェル
 （`Graffix-AR/UI/WorkDetailView.swift`）は操作 UI と表示だけを行う。
+動画書き出しの計画（各フレームが示す再生時刻・フレーム数・長さの上限と
+自動加速・完成画の静止・偶数に丸めた映像サイズ・ビットレート）もコア
+（`core/src/export.rs` の `TimelapseExport`）が決めてフレームを描き、
+シェル（`Graffix-AR/UI/TimelapseVideoExporter.swift`）は AVFoundation で
+エンコードして共有シートに渡すだけ。
 
 ## アーキテクチャ
 
@@ -310,6 +321,11 @@ xcodebuild test -project Graffix-AR.xcodeproj -scheme Graffix-AR \
   -resultBundlePath build/UITests.xcresult CODE_SIGNING_ALLOWED=NO
 ```
 
+依存更新は Dependabot（`.github/dependabot.yml`）が毎週月曜に
+`core/` の Cargo 依存と GitHub Actions を main 宛 PR で提案する
+（UniFFI はバインディング再生成が要るため別 PR）。Rust ツールチェーンは
+CI の `dtolnay/rust-toolchain@stable` が毎回最新安定版を入れるため対象外。
+
 **未確認（ビルドの成功は動作確認ではない）**
 
 - 実機でのアプリ実行（UI テストは Simulator の作品詳細のみ。描く／
@@ -328,15 +344,12 @@ xcodebuild test -project Graffix-AR.xcodeproj -scheme Graffix-AR \
   の UV 向き — キャンバス/ハイライトが上下反転する場合は
   `WallCanvasRenderer` の基底マッピングを反転させる。
 
-## ハーネスとの不整合（既知）
+## 開発する
 
-- `scripts/workflow/ios_build.py` は旧スキーム名 `Mock Up` を
-  ハードコードしている → 新スキームは `Graffix-AR`。
-- 旧ソースツリー（`Features/`, `Common/`, `Resources/Localization`）は
-  全て削除済み。同期フォルダ group 方式の `project.pbxproj` に刷新
-  （objectVersion 77, Xcode 16+）。
+開発は Devin が担当します。進め方は [AGENTS.md](AGENTS.md)、プロジェクトの事実は
+[docs/project.md](docs/project.md)、旧運用の保管と戻し方は
+[docs/legacy-ops](docs/legacy-ops/README.md) を参照してください。必須の確認は
+`.github/workflows/ci.yml` の 2 ジョブ（内容は上記「動作確認済み / 未確認」）です。
 
-## 作業管理
-
-リポジトリの共通規約は `AGENTS.md`。本再構築は依頼者の明示指示により
-ワーキングツリー上で直接実施（Issue/PR フロー対象外）。
+`project.pbxproj` は同期フォルダ group 方式（objectVersion 77）で、
+`Graffix-AR/` 配下のファイルは自動でアプリターゲットに含まれます。

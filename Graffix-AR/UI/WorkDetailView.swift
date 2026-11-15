@@ -220,8 +220,13 @@ private struct TimelapsePlayerSection: View {
     @State private var speed: Double = 2
     @State private var image: UIImage?
     @State private var progress: TimelapseProgressF?
+    @State private var exporter = TimelapseExportModel()
 
     private var duration: Double { Double(info.timelapseDurationMs) }
+
+    private var exportRequest: TimelapseExportRequestF {
+        defaultTimelapseExportRequest(speed: Float(speed))
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -271,7 +276,13 @@ private struct TimelapsePlayerSection: View {
                     .foregroundStyle(.secondary)
                     .accessibilityIdentifier("workDetail.timelapse.legacyNote")
             }
+
+            exportSection
         }
+        .sheet(item: $exporter.exported) { video in
+            ShareSheet(items: [video.url])
+        }
+        .onDisappear { exporter.cancel() }
         .task(id: playing) {
             guard playing else { return }
             if timeMs >= duration { timeMs = 0 }
@@ -307,6 +318,55 @@ private struct TimelapsePlayerSection: View {
         }.value
         image = UIImage(raster: raster)
         progress = work.timelapseProgress(tMs: tMs)
+    }
+
+    /// 動画書き出し: 長さ・サイズ・速度はコアの計画（`timelapseExportPlan`）をそのまま表示する。
+    private var exportSection: some View {
+        let plan = work.timelapseExportPlan(request: exportRequest)
+        return VStack(alignment: .leading, spacing: 8) {
+            if exporter.isExporting {
+                ProgressView(value: exporter.progress) {
+                    Text("動画を書き出し中…")
+                } currentValueLabel: {
+                    Text("\(Int(exporter.progress * 100))%")
+                }
+                Button("キャンセル", role: .cancel) {
+                    exporter.cancel()
+                }
+                .buttonStyle(.bordered)
+            } else {
+                Button {
+                    playing = false
+                    exporter.start(work.timelapseExport(request: exportRequest, scene: Self.scene))
+                } label: {
+                    Label("動画を書き出して共有", systemImage: "square.and.arrow.up")
+                }
+                .buttonStyle(.bordered)
+                .disabled(info.strokeCount == 0)
+            }
+
+            Text(String(format: "%d × %d ・ %d fps ・ 約 %.1f 秒（%@、最後に完成画を表示）",
+                        plan.width, plan.height, plan.fps,
+                        Double(plan.videoDurationMs) / 1000, speedText(plan.speed)))
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+            if plan.spedUp {
+                Label(String(format: "長い作品のため、%d 秒に収まるよう %@ で書き出します。",
+                             plan.maxVideoMs / 1000, speedText(plan.speed)),
+                      systemImage: "hare")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if let message = exporter.errorMessage {
+                Label(message, systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+        }
+    }
+
+    private func speedText(_ speed: Float) -> String {
+        speed == speed.rounded() ? "×\(Int(speed))" : String(format: "×%.1f", speed)
     }
 
     private func statusText(_ p: TimelapseProgressF) -> String {
