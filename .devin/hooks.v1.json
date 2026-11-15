@@ -1,0 +1,74 @@
+{
+  "PostCompaction": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "entire hooks devin post-compaction",
+          "timeout": 60
+        }
+      ],
+      "matcher": ""
+    }
+  ],
+  "PostToolUse": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "entire hooks devin post-tool-use",
+          "timeout": 60
+        }
+      ],
+      "matcher": ""
+    }
+  ],
+  "SessionEnd": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "entire hooks devin session-end",
+          "timeout": 60
+        }
+      ],
+      "matcher": ""
+    }
+  ],
+  "SessionStart": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "entire hooks devin session-start",
+          "timeout": 60
+        }
+      ],
+      "matcher": ""
+    }
+  ],
+  "Stop": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "entire hooks devin stop",
+          "timeout": 60
+        }
+      ],
+      "matcher": ""
+    }
+  ],
+  "UserPromptSubmit": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "entire hooks devin user-prompt-submit",
+          "timeout": 60
+        }
+      ],
+      "matcher": ""
+    }
+  ]
+}
