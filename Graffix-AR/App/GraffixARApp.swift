@@ -7,7 +7,7 @@ import SwiftUI
 struct GraffixARApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            RootView()
         }
     }
 }

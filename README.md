@@ -30,6 +30,8 @@
 │    cap/ellipse/drip/shake)  │
 │  - undo/redo/clear          │
 │  - canvas serialization v2  │
+│  - geo: map spots/haversine │
+│    filter+sort              │
 └─────────────────────────────┘
 ```
 
@@ -90,6 +92,60 @@
 ダブ v2 モデル: `uv, radius_major, radius_minor, rotation, gradient,
 opacity, softness`。距離推定は v1 と同じく幾何レイ–平面交差 `t` 主 +
 LiDAR 融合（EMA 平滑化）。
+
+## マップ画面（必須機能、VISION #11）
+
+アプリは 3 タブ構成: **描く**（AR）/ **マップ** / **作品**。
+
+- **公認ウォールスポット**（緑）— `Graffix-AR/Resources/spots.json` の
+  同梱シードを読み込んでピン＋一覧表示。**現在のデータはすべて
+  サンプル／プレースホルダ**（JSON の `notice` と各スポット名にも明記）
+  で、実在する公認の壁を示さない。実データを入れるまでは「描いてよい
+  壁」の根拠にしてはいけない。座標は渋谷近辺の例だが、機能は地域
+  非依存（ロジックに地域の前提なし）。
+- **他人の作品ピン**（紫）— `WorkPinProvider` プロトコル
+  （`Graffix-AR/Map/WorkPinProvider.swift`）経由。現在は
+  `MockWorkPinProvider` がサンプルピン（作者リンクもプレースホルダ）
+  を返す。フェーズ2の作品インデックスは同プロトコルの実装に
+  差し替えるだけで、マップ画面・詳細シートは無変更のまま使える
+  （注入箇所は `RootView` の `MapScreen(...)` 初期化のみ）。
+- **自分の作品ピン**（橙）— 「描く」画面の保存ボタンでキャンバス
+  （GFXC）と現在地を `LocalWorkStore`（`Documents/works/`）に保存。
+  `NSLocationWhenInUseUsageDescription` を追加済みで、拒否・未取得でも
+  位置なしで保存できる（一覧には出るがピンは出ない）。
+- **詳細シート** — スポット: 名称・種別・「ルート案内」（`MKMapItem`
+  で Apple マップの徒歩ルートを開く）。他人の作品: タイトル・作者・
+  外部 SNS リンク（ブラウザ）＋「レンズで見る」プレースホルダ
+  （フェーズ2まで無効）。
+- ピンの種別フィルタ・半径絞り込み・近い順ソートはコア `geo.rs`
+  （`visibleMapSpots` / `haversineM`）が計算し、シェルはモデルを渡す
+  だけ。位置権限が無いときは並び替えなしの全件表示で、初期表示は
+  データの外接矩形に合わせる（地域ハードコードなし）。
+
+### データフォーマット
+
+`spots.json`（同梱シード、公認ウォール）:
+
+```json
+{
+  "formatVersion": 1,
+  "notice": "サンプルデータ — …実在する公認ウォールではありません…",
+  "spots": [
+    { "id": "sample-wall-001", "title": "…", "subtitle": "…",
+      "latitude": 35.6595, "longitude": 139.7005 }
+  ]
+}
+```
+
+ローカル作品（`Documents/works/<id>.json` — `LocalWorkRecord`）:
+
+```json
+{ "id": "<uuid>", "title": "作品 …", "createdAt": 1731680400.0,
+  "latitude": 35.65, "longitude": 139.70 }
+```
+
+`latitude`/`longitude` は省略可（位置なし保存）。キャンバス本体は
+同ディレクトリの `<id>.gfxc`（`GFXC` シリアライズ、既存フォーマット）。
 
 ## 触覚フィードバック（Core Haptics）
 
@@ -168,12 +224,13 @@ open Graffix-AR.xcodeproj
 
 **確認済み（Linux ホスト）**
 
-- `cargo test`: 37 テスト全パス — レイ–平面交差・点–平面距離、壁
+- `cargo test`: 44 テスト全パス — レイ–平面交差・点–平面距離、壁
   ロック選択、距離→半径/不透明度の単調性とクランプ、ダブ間隔、
   undo/redo/clear、シリアライズ v2 往復・v1 後方互換・破損検知、
   入射角→楕円軸の単調増大・勾配方向、速度による減衰、
   滞留→ドリップの閾値挙動、缶振り減衰+低攪拌かすれ（リアルのみ）、
-  カジュアルプリセットの安定性、Engine 統合フロー。
+  カジュアルプリセットの安定性、Engine 統合フロー、haversine 距離の
+  既知都市間サニティ・マップスポットの種別/半径フィルタと距離ソート。
 - `cargo check --target aarch64-apple-ios` / `aarch64-apple-ios-sim`:
   コアは iOS 向けにコンパイル可能（リンクは未実行）。
 - UniFFI Swift バインディング生成（ホストビルドのライブラリから）。
@@ -181,8 +238,12 @@ open Graffix-AR.xcodeproj
 **未確認（Xcode が無いため）**
 
 - XCFramework の組み立て・リンク、**Swift シェル全体のコンパイル**
-  （モード/キャップ UI、Core Haptics、CoreMotion シェイク検出を含む —
-  すべて未検証）。
+  （モード/キャップ UI、Core Haptics、CoreMotion シェイク検出に加え、
+  本パスのマップ画面・タブ構成・MapKit アノテーション/詳細シート・
+  `WorkPinProvider`・`LocalWorkStore`・`LocationService`
+  （CoreLocation）・`spots.json` 読み込みを含む — すべて未検証）。
+- 位置情報許可フロー（プロンプト文言、拒否時のマップ挙動、保存時の
+  ワンショット測位）は実機確認が必要。
 - 実機 AR: 面検出、LiDAR 深度、描画外観（テクスチャの向き・反転、
   ハイライト表示、楕円ダブの回転方向・勾配方向、ドリップの向き、
   スナップショット内容）は実機確認が必要。

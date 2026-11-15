@@ -22,6 +22,8 @@
 	<string>1</string>
 	<key>NSCameraUsageDescription</key>
 	<string>壁にグラフィティを描くためにカメラとARを使用します。</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>作品を保存した場所にマップでピンを立て、スポットへのルート案内に使用します。</string>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UIRequiredDeviceCapabilities</key>

@@ -10,6 +10,7 @@ mod canvas;
 mod distance;
 pub mod engine;
 pub mod ffi;
+pub mod geo;
 mod math;
 mod palette;
 mod serialize;

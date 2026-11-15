@@ -2,8 +2,13 @@ import SwiftUI
 import UIKit
 
 struct ContentView: View {
-    @State private var viewModel = GraffixViewModel(engine: Engine())
+    let viewModel: GraffixViewModel
+    let worksStore: LocalWorkStore
+    let location: LocationService
+
     @State private var shareItem: ShareItem?
+    @State private var isSaving = false
+    @State private var saveToast: String?
 
     var body: some View {
         ZStack {
@@ -20,7 +25,19 @@ struct ContentView: View {
             VStack(spacing: 0) {
                 statusBar
                 Spacer()
-                ControlBar(viewModel: viewModel, onShutter: takePhoto)
+                ControlBar(viewModel: viewModel, onShutter: takePhoto, onSave: saveWork)
+            }
+
+            if let saveToast {
+                VStack {
+                    Spacer()
+                    Text(saveToast)
+                        .font(.subheadline.weight(.medium))
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(.ultraThinMaterial, in: Capsule())
+                        .padding(.bottom, 120)
+                }
             }
         }
         .preferredColorScheme(.dark)
@@ -62,6 +79,40 @@ struct ContentView: View {
         Task {
             guard let image = await viewModel.takeSnapshot() else { return }
             shareItem = ShareItem(image: image)
+        }
+    }
+
+    // MARK: - Work save (ローカル作品ストア + 位置)
+
+    /// キャンバスを GFXC で保存し、現在地を作品に紐づける。
+    /// 位置が取れなければ位置なしで保存する（ピンは出ないが一覧には出る）。
+    private func saveWork() {
+        guard !isSaving else { return }
+        isSaving = true
+        Task {
+            defer { isSaving = false }
+            let coordinate = await location.locationForSave()?.coordinate
+            let bytes = viewModel.engine.serializeCanvas()
+            do {
+                _ = try worksStore.save(
+                    canvasBytes: bytes,
+                    title: LocalWorkStore.defaultTitle(),
+                    coordinate: coordinate
+                )
+                showToast(coordinate != nil
+                          ? "保存しました — マップにピンを立てました"
+                          : "保存しました（位置なし — ピンは出ません）")
+            } catch {
+                showToast("保存に失敗しました")
+            }
+        }
+    }
+
+    private func showToast(_ text: String) {
+        saveToast = text
+        Task {
+            try? await Task.sleep(for: .seconds(2))
+            if saveToast == text { saveToast = nil }
         }
     }
 }

@@ -4,6 +4,7 @@ import SwiftUI
 struct ControlBar: View {
     let viewModel: GraffixViewModel
     let onShutter: () -> Void
+    let onSave: () -> Void
 
     var body: some View {
         VStack(spacing: 10) {
@@ -159,6 +160,12 @@ struct ControlBar: View {
             Button { onShutter() } label: {
                 Image(systemName: "camera.fill")
             }
+
+            // 作品として保存（キャンバス + 現在地 → マップのピンへ）
+            Button { onSave() } label: {
+                Image(systemName: "square.and.arrow.down")
+            }
+            .disabled(!viewModel.canUndo && !viewModel.strokeActive)
         }
         .buttonStyle(.bordered)
         .font(.title3)
