@@ -141,6 +141,10 @@ enum TimelapseVideoExporter {
                                              pool: adaptor.pixelBufferPool)
                 }
                 while !input.isReadyForMoreMediaData {
+                    // 書き込み中に失敗（容量不足など）すると ready に戻らないので待ち続けない。
+                    guard writer.status == .writing else {
+                        throw ExportError.writeFailed(writer.error?.localizedDescription)
+                    }
                     try await Task.sleep(for: .milliseconds(2))
                 }
                 let time = CMTime(value: CMTimeValue(index), timescale: fps)
