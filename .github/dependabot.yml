@@ -1,0 +1,52 @@
+# Dependabot version updates. Owner rule: toolchain and every dependency stay
+# on the latest stable release.
+#
+# Dependabot reads this file only from the default branch (main) and opens PRs
+# against main (no target-branch). It takes effect once the rebuild lands on
+# main.
+#
+# Rust toolchain: CI installs it with dtolnay/rust-toolchain@stable, which
+# resolves to the newest stable rustc on every run, and the repo has no
+# rust-toolchain.toml to pin. So there is nothing for Dependabot to bump; add a
+# `rust-toolchain` entry here only if a pinned rust-toolchain.toml is added.
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /core
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Tokyo
+    labels:
+      - type:maintenance
+    commit-message:
+      prefix: core
+    groups:
+      # Everything except UniFFI in one PR. A UniFFI bump usually changes the
+      # generated Graffix-AR/Generated/graffix_core.swift, which CI checks
+      # byte-for-byte, so it gets its own PR that needs regenerated bindings.
+      cargo:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "uniffi*"
+      uniffi:
+        patterns:
+          - "uniffi*"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Tokyo
+    labels:
+      - type:maintenance
+    commit-message:
+      prefix: CI
+    groups:
+      github-actions:
+        patterns:
+          - "*"

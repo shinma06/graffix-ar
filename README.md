@@ -279,6 +279,11 @@ open Graffix-AR.xcodeproj
   （`CODE_SIGNING_ALLOWED=NO`）で実行 — **Swift シェル全体のコンパイル
   とリンクまで**。
 
+依存更新は Dependabot（`.github/dependabot.yml`）が毎週月曜に
+`core/` の Cargo 依存と GitHub Actions を main 宛 PR で提案する
+（UniFFI はバインディング再生成が要るため別 PR）。Rust ツールチェーンは
+CI の `dtolnay/rust-toolchain@stable` が毎回最新安定版を入れるため対象外。
+
 **未確認（ビルドの成功は動作確認ではない）**
 
 - アプリの実行そのもの（XCTest/UI テストは無い）。作品詳細の画面操作
