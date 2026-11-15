@@ -73,10 +73,10 @@ final class SprayHaptics {
         guard let sprayPlayer else { return }
         try? sprayPlayer.sendParameters(
             [
-                CHHapticDynamicParameter(parameterID: .hapticIntensity,
+                CHHapticDynamicParameter(parameterID: .hapticIntensityControl,
                                          value: max(state.flow, 0.05),
                                          relativeTime: 0),
-                CHHapticDynamicParameter(parameterID: .hapticSharpness,
+                CHHapticDynamicParameter(parameterID: .hapticSharpnessControl,
                                          value: state.density,
                                          relativeTime: 0),
             ],

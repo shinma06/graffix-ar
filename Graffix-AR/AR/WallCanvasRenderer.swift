@@ -117,7 +117,7 @@ final class WallCanvasRenderer {
         bitmapBounds = bounds
 
         guard let image = bitmap.makeImage(),
-              let texture = try? TextureResource.create(
+              let texture = try? TextureResource.generate(
                   from: image,
                   options: .init(semantic: .color)
               )
@@ -191,8 +191,8 @@ final class WallCanvasRenderer {
         let sizeKey = (Int(plane.extentWidth * 100), Int(plane.extentHeight * 100))
         if sizeKey != highlightSizeKey || entity.model == nil {
             entity.model = .init(
-                mesh: .generatePlane(width: CGFloat(plane.extentWidth),
-                                     depth: CGFloat(plane.extentHeight)),
+                mesh: .generatePlane(width: plane.extentWidth,
+                                     depth: plane.extentHeight),
                 materials: [UnlitMaterial(color: color)]
             )
             highlightSizeKey = sizeKey

@@ -1,3 +1,4 @@
+import CoreLocation
 import MapKit
 import SwiftUI
 
@@ -249,7 +250,10 @@ private struct SpotDetailView: View {
 
     /// Apple マップアプリで徒歩ルートを開く。
     private func openDirections() {
-        let item = MKMapItem(placemark: MKPlacemark(coordinate: spot.coordinate))
+        let item = MKMapItem(
+            location: CLLocation(latitude: spot.coordinate.latitude,
+                                 longitude: spot.coordinate.longitude),
+            address: nil)
         item.name = spot.title
         item.openInMaps(launchOptions: [
             MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeWalking
