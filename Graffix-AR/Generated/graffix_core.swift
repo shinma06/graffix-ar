@@ -684,7 +684,8 @@ public protocol EngineProtocol: AnyObject, Sendable {
     func redo()  -> Bool
     
     /**
-     * Serialize the canvas (v1 wire format). Upload-ready for later phases.
+     * Serialize the canvas (GFXC v3, with stroke timing). Upload-ready for
+     * later phases.
      */
     func serializeCanvas()  -> Data
     
@@ -947,7 +948,8 @@ open func redo() -> Bool  {
 }
     
     /**
-     * Serialize the canvas (v1 wire format). Upload-ready for later phases.
+     * Serialize the canvas (GFXC v3, with stroke timing). Upload-ready for
+     * later phases.
      */
 open func serializeCanvas() -> Data  {
     return try!  FfiConverterData.lift(try! rustCall() {
@@ -1113,6 +1115,191 @@ public func FfiConverterTypeEngine_lift(_ handle: UInt64) throws -> Engine {
 #endif
 public func FfiConverterTypeEngine_lower(_ value: Engine) -> UInt64 {
     return FfiConverterTypeEngine.lower(value)
+}
+
+
+
+
+
+
+public protocol SavedWorkProtocol: AnyObject, Sendable {
+    
+    func info()  -> SavedWorkInfoF
+    
+    /**
+     * The finished work in a simulated scene.
+     */
+    func renderScene(scene: SceneConfigF, framing: FramingF, width: UInt32, height: UInt32)  -> RasterImageF
+    
+    /**
+     * The work as it stood `t_ms` into the replay, framed to fit the whole
+     * work so the picture does not move while it grows.
+     */
+    func renderTimelapseFrame(tMs: UInt32, scene: SceneConfigF, width: UInt32, height: UInt32)  -> RasterImageF
+    
+    func timelapseProgress(tMs: UInt32)  -> TimelapseProgressF
+    
+}
+open class SavedWork: SavedWorkProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_graffix_core_fn_clone_savedwork(self.handle, $0) }
+    }
+    /**
+     * Decode a saved work (GFXC v1–v3).
+     */
+public convenience init(bytes: Data)throws  {
+    let handle =
+        try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_graffix_core_fn_constructor_savedwork_new(
+        FfiConverterData.lower(bytes),uniffiCallStatus
+    )
+}
+    self.init(unsafeFromHandle: handle)
+}
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_graffix_core_fn_free_savedwork(handle, $0) }
+    }
+
+    
+
+    
+open func info() -> SavedWorkInfoF  {
+    return try!  FfiConverterTypeSavedWorkInfoF_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_graffix_core_fn_method_savedwork_info(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The finished work in a simulated scene.
+     */
+open func renderScene(scene: SceneConfigF, framing: FramingF, width: UInt32, height: UInt32) -> RasterImageF  {
+    return try!  FfiConverterTypeRasterImageF_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_graffix_core_fn_method_savedwork_render_scene(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeSceneConfigF_lower(scene),
+        FfiConverterTypeFramingF_lower(framing),
+        FfiConverterUInt32.lower(width),
+        FfiConverterUInt32.lower(height),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The work as it stood `t_ms` into the replay, framed to fit the whole
+     * work so the picture does not move while it grows.
+     */
+open func renderTimelapseFrame(tMs: UInt32, scene: SceneConfigF, width: UInt32, height: UInt32) -> RasterImageF  {
+    return try!  FfiConverterTypeRasterImageF_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_graffix_core_fn_method_savedwork_render_timelapse_frame(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt32.lower(tMs),
+        FfiConverterTypeSceneConfigF_lower(scene),
+        FfiConverterUInt32.lower(width),
+        FfiConverterUInt32.lower(height),uniffiCallStatus
+    )
+})
+}
+    
+open func timelapseProgress(tMs: UInt32) -> TimelapseProgressF  {
+    return try!  FfiConverterTypeTimelapseProgressF_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_graffix_core_fn_method_savedwork_timelapse_progress(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt32.lower(tMs),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSavedWork: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = SavedWork
+
+    public static func lift(_ handle: UInt64) throws -> SavedWork {
+        return SavedWork(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: SavedWork) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SavedWork {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: SavedWork, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSavedWork_lift(_ handle: UInt64) throws -> SavedWork {
+    return try FfiConverterTypeSavedWork.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSavedWork_lower(_ value: SavedWork) -> UInt64 {
+    return FfiConverterTypeSavedWork.lower(value)
 }
 
 
@@ -1862,6 +2049,66 @@ public func FfiConverterTypeGeoPointF_lower(_ value: GeoPointF) -> RustBuffer {
 }
 
 
+public struct LightingOptionF: Equatable, Hashable {
+    public var lighting: SceneLightingF
+    /**
+     * Japanese display label.
+     */
+    public var name: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(lighting: SceneLightingF, 
+        /**
+         * Japanese display label.
+         */name: String) {
+        self.lighting = lighting
+        self.name = name
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension LightingOptionF: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLightingOptionF: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LightingOptionF {
+        return
+            try LightingOptionF(
+                lighting: FfiConverterTypeSceneLightingF.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LightingOptionF, into buf: inout [UInt8]) {
+        FfiConverterTypeSceneLightingF.write(value.lighting, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLightingOptionF_lift(_ buf: RustBuffer) throws -> LightingOptionF {
+    return try FfiConverterTypeLightingOptionF.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLightingOptionF_lower(_ value: LightingOptionF) -> RustBuffer {
+    return FfiConverterTypeLightingOptionF.lower(value)
+}
+
+
 /**
  * One pin on the map. The shell builds these from the bundled legal-wall
  * seed, the work-pin provider (other users' works) and the local works
@@ -1958,6 +2205,66 @@ public func FfiConverterTypeMapSpotF_lift(_ buf: RustBuffer) throws -> MapSpotF 
 #endif
 public func FfiConverterTypeMapSpotF_lower(_ value: MapSpotF) -> RustBuffer {
     return FfiConverterTypeMapSpotF.lower(value)
+}
+
+
+public struct MaterialOptionF: Equatable, Hashable {
+    public var material: WallMaterialF
+    /**
+     * Japanese display label.
+     */
+    public var name: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(material: WallMaterialF, 
+        /**
+         * Japanese display label.
+         */name: String) {
+        self.material = material
+        self.name = name
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension MaterialOptionF: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMaterialOptionF: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MaterialOptionF {
+        return
+            try MaterialOptionF(
+                material: FfiConverterTypeWallMaterialF.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MaterialOptionF, into buf: inout [UInt8]) {
+        FfiConverterTypeWallMaterialF.write(value.material, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMaterialOptionF_lift(_ buf: RustBuffer) throws -> MaterialOptionF {
+    return try FfiConverterTypeMaterialOptionF.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMaterialOptionF_lower(_ value: MaterialOptionF) -> RustBuffer {
+    return FfiConverterTypeMaterialOptionF.lower(value)
 }
 
 
@@ -2165,6 +2472,329 @@ public func FfiConverterTypePlaneObservationF_lower(_ value: PlaneObservationF) 
 
 
 /**
+ * An opaque RGBA8 image, row-major from the top-left.
+ */
+public struct RasterImageF: Equatable, Hashable {
+    public var width: UInt32
+    public var height: UInt32
+    public var rgba: Data
+    /**
+     * Wall area the image covers, meters.
+     */
+    public var viewWidthM: Float
+    public var viewHeightM: Float
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(width: UInt32, height: UInt32, rgba: Data, 
+        /**
+         * Wall area the image covers, meters.
+         */viewWidthM: Float, viewHeightM: Float) {
+        self.width = width
+        self.height = height
+        self.rgba = rgba
+        self.viewWidthM = viewWidthM
+        self.viewHeightM = viewHeightM
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension RasterImageF: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeRasterImageF: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> RasterImageF {
+        return
+            try RasterImageF(
+                width: FfiConverterUInt32.read(from: &buf), 
+                height: FfiConverterUInt32.read(from: &buf), 
+                rgba: FfiConverterData.read(from: &buf), 
+                viewWidthM: FfiConverterFloat.read(from: &buf), 
+                viewHeightM: FfiConverterFloat.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: RasterImageF, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.width, into: &buf)
+        FfiConverterUInt32.write(value.height, into: &buf)
+        FfiConverterData.write(value.rgba, into: &buf)
+        FfiConverterFloat.write(value.viewWidthM, into: &buf)
+        FfiConverterFloat.write(value.viewHeightM, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRasterImageF_lift(_ buf: RustBuffer) throws -> RasterImageF {
+    return try FfiConverterTypeRasterImageF.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRasterImageF_lower(_ value: RasterImageF) -> RustBuffer {
+    return FfiConverterTypeRasterImageF.lower(value)
+}
+
+
+public struct SavedWorkInfoF: Equatable, Hashable {
+    public var createdUnixTime: UInt64
+    public var strokeCount: UInt32
+    public var dabCount: UInt32
+    public var dripCount: UInt32
+    /**
+     * Painted area, meters (0 when empty).
+     */
+    public var widthM: Float
+    public var heightM: Float
+    public var timelapseDurationMs: UInt32
+    /**
+     * Timelapse uses recorded timing (v3). False = synthesized from order.
+     */
+    public var hasRecordedTiming: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(createdUnixTime: UInt64, strokeCount: UInt32, dabCount: UInt32, dripCount: UInt32, 
+        /**
+         * Painted area, meters (0 when empty).
+         */widthM: Float, heightM: Float, timelapseDurationMs: UInt32, 
+        /**
+         * Timelapse uses recorded timing (v3). False = synthesized from order.
+         */hasRecordedTiming: Bool) {
+        self.createdUnixTime = createdUnixTime
+        self.strokeCount = strokeCount
+        self.dabCount = dabCount
+        self.dripCount = dripCount
+        self.widthM = widthM
+        self.heightM = heightM
+        self.timelapseDurationMs = timelapseDurationMs
+        self.hasRecordedTiming = hasRecordedTiming
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension SavedWorkInfoF: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSavedWorkInfoF: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SavedWorkInfoF {
+        return
+            try SavedWorkInfoF(
+                createdUnixTime: FfiConverterUInt64.read(from: &buf), 
+                strokeCount: FfiConverterUInt32.read(from: &buf), 
+                dabCount: FfiConverterUInt32.read(from: &buf), 
+                dripCount: FfiConverterUInt32.read(from: &buf), 
+                widthM: FfiConverterFloat.read(from: &buf), 
+                heightM: FfiConverterFloat.read(from: &buf), 
+                timelapseDurationMs: FfiConverterUInt32.read(from: &buf), 
+                hasRecordedTiming: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: SavedWorkInfoF, into buf: inout [UInt8]) {
+        FfiConverterUInt64.write(value.createdUnixTime, into: &buf)
+        FfiConverterUInt32.write(value.strokeCount, into: &buf)
+        FfiConverterUInt32.write(value.dabCount, into: &buf)
+        FfiConverterUInt32.write(value.dripCount, into: &buf)
+        FfiConverterFloat.write(value.widthM, into: &buf)
+        FfiConverterFloat.write(value.heightM, into: &buf)
+        FfiConverterUInt32.write(value.timelapseDurationMs, into: &buf)
+        FfiConverterBool.write(value.hasRecordedTiming, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSavedWorkInfoF_lift(_ buf: RustBuffer) throws -> SavedWorkInfoF {
+    return try FfiConverterTypeSavedWorkInfoF.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSavedWorkInfoF_lower(_ value: SavedWorkInfoF) -> RustBuffer {
+    return FfiConverterTypeSavedWorkInfoF.lower(value)
+}
+
+
+/**
+ * One simulated situation.
+ */
+public struct SceneConfigF: Equatable, Hashable {
+    public var lighting: SceneLightingF
+    public var material: WallMaterialF
+    /**
+     * Index into `SceneOptionsF::wall_colors` (0 = the material's color).
+     */
+    public var wallColorIndex: UInt8
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(lighting: SceneLightingF, material: WallMaterialF, 
+        /**
+         * Index into `SceneOptionsF::wall_colors` (0 = the material's color).
+         */wallColorIndex: UInt8) {
+        self.lighting = lighting
+        self.material = material
+        self.wallColorIndex = wallColorIndex
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension SceneConfigF: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSceneConfigF: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SceneConfigF {
+        return
+            try SceneConfigF(
+                lighting: FfiConverterTypeSceneLightingF.read(from: &buf), 
+                material: FfiConverterTypeWallMaterialF.read(from: &buf), 
+                wallColorIndex: FfiConverterUInt8.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: SceneConfigF, into buf: inout [UInt8]) {
+        FfiConverterTypeSceneLightingF.write(value.lighting, into: &buf)
+        FfiConverterTypeWallMaterialF.write(value.material, into: &buf)
+        FfiConverterUInt8.write(value.wallColorIndex, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSceneConfigF_lift(_ buf: RustBuffer) throws -> SceneConfigF {
+    return try FfiConverterTypeSceneConfigF.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSceneConfigF_lower(_ value: SceneConfigF) -> RustBuffer {
+    return FfiConverterTypeSceneConfigF.lower(value)
+}
+
+
+/**
+ * Everything the scene picker UI offers.
+ */
+public struct SceneOptionsF: Equatable, Hashable {
+    public var lightings: [LightingOptionF]
+    public var materials: [MaterialOptionF]
+    /**
+     * Wall recolors; index 0 keeps the material color (its swatch is a
+     * neutral stand-in).
+     */
+    public var wallColors: [PaletteEntryF]
+    public var minViewingDistanceM: Float
+    public var maxViewingDistanceM: Float
+    public var defaultViewingDistanceM: Float
+    /**
+     * Horizontal field of view the distance framing simulates.
+     */
+    public var cameraHfovDeg: Float
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(lightings: [LightingOptionF], materials: [MaterialOptionF], 
+        /**
+         * Wall recolors; index 0 keeps the material color (its swatch is a
+         * neutral stand-in).
+         */wallColors: [PaletteEntryF], minViewingDistanceM: Float, maxViewingDistanceM: Float, defaultViewingDistanceM: Float, 
+        /**
+         * Horizontal field of view the distance framing simulates.
+         */cameraHfovDeg: Float) {
+        self.lightings = lightings
+        self.materials = materials
+        self.wallColors = wallColors
+        self.minViewingDistanceM = minViewingDistanceM
+        self.maxViewingDistanceM = maxViewingDistanceM
+        self.defaultViewingDistanceM = defaultViewingDistanceM
+        self.cameraHfovDeg = cameraHfovDeg
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension SceneOptionsF: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSceneOptionsF: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SceneOptionsF {
+        return
+            try SceneOptionsF(
+                lightings: FfiConverterSequenceTypeLightingOptionF.read(from: &buf), 
+                materials: FfiConverterSequenceTypeMaterialOptionF.read(from: &buf), 
+                wallColors: FfiConverterSequenceTypePaletteEntryF.read(from: &buf), 
+                minViewingDistanceM: FfiConverterFloat.read(from: &buf), 
+                maxViewingDistanceM: FfiConverterFloat.read(from: &buf), 
+                defaultViewingDistanceM: FfiConverterFloat.read(from: &buf), 
+                cameraHfovDeg: FfiConverterFloat.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: SceneOptionsF, into buf: inout [UInt8]) {
+        FfiConverterSequenceTypeLightingOptionF.write(value.lightings, into: &buf)
+        FfiConverterSequenceTypeMaterialOptionF.write(value.materials, into: &buf)
+        FfiConverterSequenceTypePaletteEntryF.write(value.wallColors, into: &buf)
+        FfiConverterFloat.write(value.minViewingDistanceM, into: &buf)
+        FfiConverterFloat.write(value.maxViewingDistanceM, into: &buf)
+        FfiConverterFloat.write(value.defaultViewingDistanceM, into: &buf)
+        FfiConverterFloat.write(value.cameraHfovDeg, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSceneOptionsF_lift(_ buf: RustBuffer) throws -> SceneOptionsF {
+    return try FfiConverterTypeSceneOptionsF.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSceneOptionsF_lower(_ value: SceneOptionsF) -> RustBuffer {
+    return FfiConverterTypeSceneOptionsF.lower(value)
+}
+
+
+/**
  * What the spray engine is doing this frame — the shell drives haptics
  * (and the shake hint) purely from this, never from its own guesses.
  */
@@ -2332,6 +2962,78 @@ public func FfiConverterTypeStrokeF_lift(_ buf: RustBuffer) throws -> StrokeF {
 #endif
 public func FfiConverterTypeStrokeF_lower(_ value: StrokeF) -> RustBuffer {
     return FfiConverterTypeStrokeF.lower(value)
+}
+
+
+public struct TimelapseProgressF: Equatable, Hashable {
+    public var completedStrokes: UInt32
+    public var activeStroke: UInt32?
+    public var visibleDabs: UInt32
+    public var visibleDrips: UInt32
+    /**
+     * 0..1 of the replay duration.
+     */
+    public var fraction: Float
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(completedStrokes: UInt32, activeStroke: UInt32?, visibleDabs: UInt32, visibleDrips: UInt32, 
+        /**
+         * 0..1 of the replay duration.
+         */fraction: Float) {
+        self.completedStrokes = completedStrokes
+        self.activeStroke = activeStroke
+        self.visibleDabs = visibleDabs
+        self.visibleDrips = visibleDrips
+        self.fraction = fraction
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension TimelapseProgressF: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeTimelapseProgressF: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TimelapseProgressF {
+        return
+            try TimelapseProgressF(
+                completedStrokes: FfiConverterUInt32.read(from: &buf), 
+                activeStroke: FfiConverterOptionUInt32.read(from: &buf), 
+                visibleDabs: FfiConverterUInt32.read(from: &buf), 
+                visibleDrips: FfiConverterUInt32.read(from: &buf), 
+                fraction: FfiConverterFloat.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: TimelapseProgressF, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.completedStrokes, into: &buf)
+        FfiConverterOptionUInt32.write(value.activeStroke, into: &buf)
+        FfiConverterUInt32.write(value.visibleDabs, into: &buf)
+        FfiConverterUInt32.write(value.visibleDrips, into: &buf)
+        FfiConverterFloat.write(value.fraction, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTimelapseProgressF_lift(_ buf: RustBuffer) throws -> TimelapseProgressF {
+    return try FfiConverterTypeTimelapseProgressF.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTimelapseProgressF_lower(_ value: TimelapseProgressF) -> RustBuffer {
+    return FfiConverterTypeTimelapseProgressF.lower(value)
 }
 
 
@@ -2538,6 +3240,84 @@ public func FfiConverterTypeCoreError_lower(_ value: CoreError) -> RustBuffer {
 
 
 /**
+ * Virtual camera framing.
+ */
+
+public enum FramingF: Equatable, Hashable {
+    
+    /**
+     * Fit the whole work with a margin.
+     */
+    case fitWork
+    /**
+     * Head-on from this many meters (clamped to the supported range).
+     */
+    case viewingDistance(meters: Float
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FramingF: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFramingF: FfiConverterRustBuffer {
+    typealias SwiftType = FramingF
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FramingF {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .fitWork
+        
+        case 2: return .viewingDistance(meters: try FfiConverterFloat.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: FramingF, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .fitWork:
+            writeInt(&buf, Int32(1))
+        
+        
+        case let .viewingDistance(meters):
+            writeInt(&buf, Int32(2))
+            FfiConverterFloat.write(meters, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFramingF_lift(_ buf: RustBuffer) throws -> FramingF {
+    return try FfiConverterTypeFramingF.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFramingF_lower(_ value: FramingF) -> RustBuffer {
+    return FfiConverterTypeFramingF.lower(value)
+}
+
+
+
+/**
  * What a pin on the map represents.
  */
 
@@ -2618,6 +3398,86 @@ public func FfiConverterTypeMapSpotKindF_lift(_ buf: RustBuffer) throws -> MapSp
 #endif
 public func FfiConverterTypeMapSpotKindF_lower(_ value: MapSpotKindF) -> RustBuffer {
     return FfiConverterTypeMapSpotKindF.lower(value)
+}
+
+
+
+
+public enum SceneLightingF: Equatable, Hashable {
+    
+    case day
+    case overcast
+    case dusk
+    case night
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension SceneLightingF: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSceneLightingF: FfiConverterRustBuffer {
+    typealias SwiftType = SceneLightingF
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SceneLightingF {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .day
+        
+        case 2: return .overcast
+        
+        case 3: return .dusk
+        
+        case 4: return .night
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: SceneLightingF, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .day:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .overcast:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .dusk:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .night:
+            writeInt(&buf, Int32(4))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSceneLightingF_lift(_ buf: RustBuffer) throws -> SceneLightingF {
+    return try FfiConverterTypeSceneLightingF.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSceneLightingF_lower(_ value: SceneLightingF) -> RustBuffer {
+    return FfiConverterTypeSceneLightingF.lower(value)
 }
 
 
@@ -2766,6 +3626,110 @@ public func FfiConverterTypeTrackingStateF_lower(_ value: TrackingStateF) -> Rus
     return FfiConverterTypeTrackingStateF.lower(value)
 }
 
+
+
+
+public enum WallMaterialF: Equatable, Hashable {
+    
+    case concrete
+    case shutter
+    case brick
+    case plaster
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension WallMaterialF: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeWallMaterialF: FfiConverterRustBuffer {
+    typealias SwiftType = WallMaterialF
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> WallMaterialF {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .concrete
+        
+        case 2: return .shutter
+        
+        case 3: return .brick
+        
+        case 4: return .plaster
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: WallMaterialF, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .concrete:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .shutter:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .brick:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .plaster:
+            writeInt(&buf, Int32(4))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWallMaterialF_lift(_ buf: RustBuffer) throws -> WallMaterialF {
+    return try FfiConverterTypeWallMaterialF.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWallMaterialF_lower(_ value: WallMaterialF) -> RustBuffer {
+    return FfiConverterTypeWallMaterialF.lower(value)
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionUInt32: FfiConverterRustBuffer {
+    typealias SwiftType = UInt32?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterUInt32.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterUInt32.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
@@ -3013,6 +3977,31 @@ fileprivate struct FfiConverterSequenceTypeDripF: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeLightingOptionF: FfiConverterRustBuffer {
+    typealias SwiftType = [LightingOptionF]
+
+    public static func write(_ value: [LightingOptionF], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeLightingOptionF.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [LightingOptionF] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [LightingOptionF]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeLightingOptionF.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeMapSpotF: FfiConverterRustBuffer {
     typealias SwiftType = [MapSpotF]
 
@@ -3030,6 +4019,31 @@ fileprivate struct FfiConverterSequenceTypeMapSpotF: FfiConverterRustBuffer {
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeMapSpotF.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeMaterialOptionF: FfiConverterRustBuffer {
+    typealias SwiftType = [MaterialOptionF]
+
+    public static func write(_ value: [MaterialOptionF], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeMaterialOptionF.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [MaterialOptionF] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [MaterialOptionF]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeMaterialOptionF.read(from: &buf))
         }
         return seq
     }
@@ -3189,6 +4203,16 @@ public func visibleMapSpots(spots: [MapSpotF], kinds: [MapSpotKindF], center: Ge
     )
 })
 }
+/**
+ * Lighting / material / wall color / distance choices for the scene UI.
+ */
+public func sceneOptions() -> SceneOptionsF  {
+    return try!  FfiConverterTypeSceneOptionsF_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_graffix_core_fn_func_scene_options(uniffiCallStatus
+    )
+})
+}
 
 private enum InitializationResult {
     case ok
@@ -3209,6 +4233,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_graffix_core_checksum_func_visible_map_spots() != 14531) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_graffix_core_checksum_func_scene_options() != 61440) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_graffix_core_checksum_method_engine_can_redo() != 58118) {
@@ -3256,7 +4283,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_graffix_core_checksum_method_engine_redo() != 55529) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_graffix_core_checksum_method_engine_serialize_canvas() != 47444) {
+    if (uniffi_graffix_core_checksum_method_engine_serialize_canvas() != 55633) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_graffix_core_checksum_method_engine_set_cap_index() != 37458) {
@@ -3289,7 +4316,22 @@ private let initializationResult: InitializationResult = {
     if (uniffi_graffix_core_checksum_method_engine_wall_count() != 16378) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_graffix_core_checksum_method_savedwork_info() != 28855) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_graffix_core_checksum_method_savedwork_render_scene() != 56771) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_graffix_core_checksum_method_savedwork_render_timelapse_frame() != 45880) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_graffix_core_checksum_method_savedwork_timelapse_progress() != 23400) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_graffix_core_checksum_constructor_engine_new() != 14120) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_graffix_core_checksum_constructor_savedwork_new() != 37680) {
         return InitializationResult.apiChecksumMismatch
     }
 

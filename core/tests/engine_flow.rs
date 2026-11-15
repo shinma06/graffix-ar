@@ -260,3 +260,52 @@ fn stationary_spray_drips_in_real_mode_only() {
     let drips2: usize = snap2.strokes.iter().map(|s| s.drips.len()).sum();
     assert_eq!(drips2, 0);
 }
+
+#[test]
+fn saved_work_replays_recorded_stroke_timing() {
+    use graffix_core::work::SavedWork;
+
+    let e = locked_engine(2.0);
+    // Stroke 1: 10 frames of 50 ms sweeping right.
+    for i in 1..=10 {
+        e.tick(input_dt(v3(i as f32 * 0.03, 0.0, 2.0), true, 0.05));
+    }
+    // 3 s idle (60 frames of 50 ms), then stroke 2: 5 frames.
+    for _ in 0..60 {
+        e.tick(input_dt(forward(), false, 0.05));
+    }
+    for i in 1..=5 {
+        e.tick(input_dt(v3(0.0, i as f32 * 0.03, 2.0), true, 0.05));
+    }
+    e.tick(input_dt(forward(), false, 0.05));
+
+    let work = SavedWork::new(e.serialize_canvas()).unwrap();
+    let info = work.info();
+    assert_eq!(info.stroke_count, 2);
+    assert!(info.has_recorded_timing);
+    // Painting took ~450 ms + ~200 ms; the 3 s idle is compressed.
+    assert!(
+        (500..=1_200).contains(&info.timelapse_duration_ms),
+        "duration {}",
+        info.timelapse_duration_ms
+    );
+    let half = work.timelapse_progress(200);
+    assert_eq!(half.active_stroke, Some(0));
+    assert!(half.visible_dabs > 0 && half.visible_dabs < info.dab_count);
+    let done = work.timelapse_progress(info.timelapse_duration_ms);
+    assert_eq!(done.completed_strokes, 2);
+    assert_eq!(done.visible_dabs, info.dab_count);
+
+    // Loading the work and painting more keeps the timeline ordered.
+    let e2 = locked_engine(2.0);
+    e2.load_canvas(e.serialize_canvas()).unwrap();
+    e2.lock_aimed();
+    for i in 1..=3 {
+        e2.tick(input_dt(v3(-(i as f32) * 0.03, 0.0, 2.0), true, 0.05));
+    }
+    e2.tick(input_dt(forward(), false, 0.05));
+    let more = SavedWork::new(e2.serialize_canvas()).unwrap().info();
+    assert_eq!(more.stroke_count, 3);
+    assert!(more.has_recorded_timing);
+    assert!(more.timelapse_duration_ms > info.timelapse_duration_ms);
+}

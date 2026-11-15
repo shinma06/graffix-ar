@@ -4,7 +4,7 @@
 //! ```text
 //! offset  field
 //! 0       magic "GFXC"                  u32
-//! 4       format version = 2            u16  (v1 payloads still decode)
+//! 4       format version = 3            u16  (v1/v2 payloads still decode)
 //! 6       header_len                    u16  (bytes before stroke data)
 //! 8       created_unix_time             u64
 //! 16      has_frame                     u8
@@ -15,13 +15,18 @@
 //! 56      (normal = u x v, not stored)
 //! 56/20   stroke_count                  u32       ("body" starts here)
 //! +4      per stroke: palette_index     u8
-//!         reserved                      u8 x 3
+//!         stroke_flags (v3)             u8   bit0 = has_timing
+//!         reserved                      u8 x 2
 //!         dab_count                     u32
 //!         per dab (v2):                 f32 x 9
 //!           u, v, radius_major, radius_minor, rotation,
 //!           gradient_u, gradient_v, opacity, softness
 //!         drip_count                    u32  (v2 only)
 //!         per drip: u, v, len, width, opacity  f32 x 5
+//!         if has_timing (v3):
+//!           start_ms                    u32  canvas time at stroke start
+//!           per dab:  t_ms              u32  offset from start_ms
+//!           per drip: t_ms              u32  offset from start_ms
 //! end-4   crc32 (IEEE) of all preceding bytes   u32
 //! ```
 //!
@@ -29,15 +34,22 @@
 //! drips. v1 data decodes into v2's model as circular dabs (major = minor =
 //! radius, no gradient, default softness 0.5).
 //!
+//! v2 note: identical to v3 minus timing; the flags byte was reserved (0),
+//! so v2 strokes decode as untimed (`timing: None`) and the timelapse
+//! synthesizes a schedule for them. v3 offsets are non-decreasing per
+//! stroke; anything else is rejected as corrupt.
+//!
 //! Strokes are pure wall-local geometry relative to `frame`; nothing in the
 //! format ties a work to a world position, so a later phase can attach a
 //! location/wall anchor when the work is uploaded.
 
-use crate::canvas::{Canvas, Dab, Drip, Stroke};
+use crate::canvas::{Canvas, Dab, Drip, Stroke, StrokeTiming};
 use crate::math::{PlaneFrame, Vec2, Vec3};
 
 const MAGIC: u32 = 0x4746_5843; // "GFXC"
-const VERSION: u16 = 2;
+const VERSION: u16 = 3;
+/// Stroke flag: a timing block follows the drips.
+const STROKE_HAS_TIMING: u8 = 1;
 const HEADER_LEN: u16 = 20;
 
 /// Minimum sane length of a dab section before we alloc.
@@ -67,7 +79,8 @@ pub fn encode(canvas: &Canvas, created_unix_time: u64) -> Vec<u8> {
     push_u32(&mut out, canvas.strokes().len() as u32);
     for s in canvas.strokes() {
         out.push(s.palette_index);
-        out.extend_from_slice(&[0; 3]);
+        out.push(if s.timing.is_some() { STROKE_HAS_TIMING } else { 0 });
+        out.extend_from_slice(&[0; 2]);
         push_u32(&mut out, s.dabs.len() as u32);
         for d in &s.dabs {
             push_f32(&mut out, d.uv.x);
@@ -87,6 +100,17 @@ pub fn encode(canvas: &Canvas, created_unix_time: u64) -> Vec<u8> {
             push_f32(&mut out, d.len);
             push_f32(&mut out, d.width);
             push_f32(&mut out, d.opacity);
+        }
+        if let Some(t) = &s.timing {
+            debug_assert_eq!(t.dab_ms.len(), s.dabs.len());
+            debug_assert_eq!(t.drip_ms.len(), s.drips.len());
+            push_u32(&mut out, t.start_ms);
+            for i in 0..s.dabs.len() {
+                push_u32(&mut out, t.dab_ms.get(i).copied().unwrap_or(0));
+            }
+            for i in 0..s.drips.len() {
+                push_u32(&mut out, t.drip_ms.get(i).copied().unwrap_or(0));
+            }
         }
     }
 
@@ -147,7 +171,10 @@ pub fn decode(bytes: &[u8]) -> Result<(Option<PlaneFrame>, Vec<Stroke>, u64), St
     let mut strokes = Vec::with_capacity(stroke_count.min(1024));
     for _ in 0..stroke_count {
         let palette_index = r.u8()?;
-        let _reserved = r.bytes(3)?;
+        // Pre-v3 this byte was reserved (written as 0).
+        let raw_flags = r.u8()?;
+        let flags = if version >= 3 { raw_flags } else { 0 };
+        let _reserved = r.bytes(2)?;
         let dab_count = r.u32()? as usize;
         if dab_count > MAX_DABS_PER_STROKE {
             return Err("dab_count too large".into());
@@ -216,13 +243,42 @@ pub fn decode(bytes: &[u8]) -> Result<(Option<PlaneFrame>, Vec<Stroke>, u64), St
                 });
             }
         }
+        let timing = if flags & STROKE_HAS_TIMING != 0 {
+            let start_ms = r.u32()?;
+            let dab_ms = read_offsets(&mut r, dabs.len())?;
+            let drip_ms = read_offsets(&mut r, drips.len())?;
+            Some(StrokeTiming {
+                start_ms,
+                dab_ms,
+                drip_ms,
+            })
+        } else {
+            None
+        };
         strokes.push(Stroke {
             palette_index,
             dabs,
             drips,
+            timing,
         });
     }
     Ok((frame, strokes, created))
+}
+
+/// `n` non-decreasing u32 time offsets.
+fn read_offsets(r: &mut Reader, n: usize) -> Result<Vec<u32>, String> {
+    r.require(n.checked_mul(4).ok_or("timing block overflow")?)?;
+    let mut out = Vec::with_capacity(n);
+    let mut prev = 0u32;
+    for _ in 0..n {
+        let t = r.u32()?;
+        if t < prev {
+            return Err("timing offsets out of order".into());
+        }
+        prev = t;
+        out.push(t);
+    }
+    Ok(out)
 }
 
 fn push_f32(out: &mut Vec<u8>, v: f32) {
@@ -346,11 +402,17 @@ mod tests {
                 width: 0.006,
                 opacity: 0.9,
             }],
+            timing: Some(StrokeTiming {
+                start_ms: 1_250,
+                dab_ms: vec![0, 16],
+                drip_ms: vec![16],
+            }),
         });
         c.commit_stroke(Stroke {
             palette_index: 8,
             dabs: vec![Dab::circle(Vec2::new(0.0, 0.0), 0.01, 1.0, 0.6)],
             drips: vec![],
+            timing: None,
         });
         c
     }
@@ -431,6 +493,127 @@ mod tests {
         assert_eq!(d.gradient, Vec2::new(0.0, 0.0));
         assert_eq!(d.softness, V1_SOFTNESS);
         assert!(s.drips.is_empty());
+    }
+
+    /// Hand-rolled v2 bytes (9-float dabs, drip section, reserved stroke
+    /// bytes, no timing) written independently of `encode`.
+    fn encode_v2() -> Vec<u8> {
+        let mut out = Vec::new();
+        out.extend_from_slice(&MAGIC.to_le_bytes());
+        out.extend_from_slice(&2u16.to_le_bytes()); // version = 2
+        out.extend_from_slice(&HEADER_LEN.to_le_bytes());
+        out.extend_from_slice(&1_731_600_000u64.to_le_bytes());
+        out.push(0u8); // has_frame = false
+        out.extend_from_slice(&[0; 3]);
+        out.extend_from_slice(&2u32.to_le_bytes()); // stroke_count
+        for (palette, u) in [(4u8, 0.1f32), (9u8, -0.2f32)] {
+            out.push(palette);
+            out.extend_from_slice(&[0; 3]);
+            out.extend_from_slice(&2u32.to_le_bytes()); // dab_count
+            for k in 0..2 {
+                let dab = [u + k as f32 * 0.01, 0.5, 0.04, 0.03, 0.2, 0.0, 1.0, 0.7, 0.3];
+                for f in dab {
+                    out.extend_from_slice(&f.to_le_bytes());
+                }
+            }
+            out.extend_from_slice(&1u32.to_le_bytes()); // drip_count
+            for f in [u, 0.5, 0.12, 0.006, 0.8] {
+                out.extend_from_slice(&f.to_le_bytes());
+            }
+        }
+        let crc = crc32(&out);
+        out.extend_from_slice(&crc.to_le_bytes());
+        out
+    }
+
+    #[test]
+    fn v2_payloads_still_decode_untimed() {
+        let (frame, strokes, created) = decode(&encode_v2()).unwrap();
+        assert!(frame.is_none());
+        assert_eq!(created, 1_731_600_000);
+        assert_eq!(strokes.len(), 2);
+        assert_eq!(strokes[0].palette_index, 4);
+        assert_eq!(strokes[1].palette_index, 9);
+        for s in &strokes {
+            assert_eq!(s.dabs.len(), 2);
+            assert_eq!(s.drips.len(), 1);
+            assert!(s.timing.is_none());
+        }
+        let d = strokes[0].dabs[1];
+        assert!((d.uv.x - 0.11).abs() < 1e-6);
+        assert_eq!(d.radius_major, 0.04);
+        assert_eq!(d.radius_minor, 0.03);
+        assert_eq!(d.gradient, Vec2::new(0.0, 1.0));
+        assert_eq!(d.softness, 0.3);
+        assert_eq!(strokes[1].drips[0].len, 0.12);
+        // Re-saving a v2 work upgrades it to v3 without inventing timing.
+        let mut c = Canvas::new();
+        c.replace(None, strokes.clone());
+        let v3 = encode(&c, created);
+        assert_eq!(u16::from_le_bytes([v3[4], v3[5]]), VERSION);
+        let (_, again, _) = decode(&v3).unwrap();
+        assert_eq!(again, strokes);
+    }
+
+    #[test]
+    fn v3_timing_round_trips() {
+        let c = sample_canvas();
+        let (_, strokes, _) = decode(&encode(&c, 7)).unwrap();
+        let t = strokes[0].timing.as_ref().unwrap();
+        assert_eq!(t.start_ms, 1_250);
+        assert_eq!(t.dab_ms, vec![0, 16]);
+        assert_eq!(t.drip_ms, vec![16]);
+        assert_eq!(t.end_ms(), 1_266);
+        assert!(strokes[1].timing.is_none());
+    }
+
+    /// Re-CRC a tampered body so the decoder reaches the semantic checks.
+    fn with_fixed_crc(mut bytes: Vec<u8>) -> Vec<u8> {
+        let n = bytes.len() - 4;
+        let crc = crc32(&bytes[..n]);
+        bytes[n..].copy_from_slice(&crc.to_le_bytes());
+        bytes
+    }
+
+    #[test]
+    fn v3_rejects_out_of_order_or_truncated_timing() {
+        let mut c = Canvas::new();
+        c.commit_stroke(Stroke {
+            palette_index: 0,
+            dabs: vec![Dab::circle(Vec2::new(0.0, 0.0), 0.02, 1.0, 0.5); 2],
+            drips: vec![],
+            timing: Some(StrokeTiming {
+                start_ms: 0,
+                dab_ms: vec![10, 20],
+                drip_ms: vec![],
+            }),
+        });
+        let bytes = encode(&c, 0);
+        assert!(decode(&bytes).is_ok());
+        // Body ends with dab offsets [10, 20]; swap them to [20, 10].
+        let n = bytes.len() - 4;
+        let mut bad = bytes.clone();
+        bad[n - 8..n - 4].copy_from_slice(&20u32.to_le_bytes());
+        bad[n - 4..n].copy_from_slice(&10u32.to_le_bytes());
+        assert_eq!(
+            decode(&with_fixed_crc(bad)).unwrap_err(),
+            "timing offsets out of order"
+        );
+        // Timing flag set but the block is missing.
+        let mut cut = bytes[..n - 12].to_vec();
+        cut.extend_from_slice(&[0; 4]);
+        assert!(decode(&with_fixed_crc(cut)).is_err());
+    }
+
+    #[test]
+    fn v2_ignores_stroke_flag_byte() {
+        // A v2 writer always left the byte reserved; even if it is nonzero,
+        // v2 data must not be read as having a timing block.
+        let mut bytes = encode_v2();
+        let first_stroke = HEADER_LEN as usize + 4;
+        bytes[first_stroke + 1] = STROKE_HAS_TIMING;
+        let (_, strokes, _) = decode(&with_fixed_crc(bytes)).unwrap();
+        assert!(strokes.iter().all(|s| s.timing.is_none()));
     }
 
     #[test]

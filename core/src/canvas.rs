@@ -58,6 +58,34 @@ pub struct Stroke {
     /// Drips spawned by this stroke's oversaturation (undo removes them
     /// with the stroke).
     pub drips: Vec<Drip>,
+    /// When each mark was painted (timelapse replay). `None` for strokes
+    /// loaded from pre-v3 data, which carried no timing.
+    pub timing: Option<StrokeTiming>,
+}
+
+/// Paint timing of one stroke, in milliseconds of canvas time (the engine's
+/// accumulated frame time, so idle app time between ticks is not counted).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct StrokeTiming {
+    /// Canvas time at which the stroke began.
+    pub start_ms: u32,
+    /// Per dab, offset from `start_ms` (non-decreasing, same length as `dabs`).
+    pub dab_ms: Vec<u32>,
+    /// Per drip, offset from `start_ms` (non-decreasing, same length as `drips`).
+    pub drip_ms: Vec<u32>,
+}
+
+impl StrokeTiming {
+    /// Canvas time of the stroke's last recorded mark.
+    pub fn end_ms(&self) -> u32 {
+        let last = self
+            .dab_ms
+            .last()
+            .copied()
+            .unwrap_or(0)
+            .max(self.drip_ms.last().copied().unwrap_or(0));
+        self.start_ms.saturating_add(last)
+    }
 }
 
 /// One reversible edit.
@@ -256,6 +284,7 @@ mod tests {
                 .map(|i| Dab::circle(Vec2::new(i as f32 * 0.01, 0.0), 0.05, 0.8, 0.5))
                 .collect(),
             drips: Vec::new(),
+            timing: None,
         }
     }
 
@@ -296,6 +325,7 @@ mod tests {
             palette_index: 0,
             dabs: vec![],
             drips: vec![],
+            timing: None,
         });
         assert!(!c.can_undo());
         assert_eq!(c.dab_count(), 0);

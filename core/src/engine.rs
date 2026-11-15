@@ -2,7 +2,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use crate::canvas::{dab_f, drip_f, Canvas, Stroke};
+use crate::canvas::{dab_f, drip_f, Canvas, Stroke, StrokeTiming};
 use crate::distance::{DistanceFilter, Tracking};
 use crate::ffi::{
     CanvasFrameF, CanvasSnapshotF, CoreError, FrameInputF, FrameOutputF, NamedEntryF,
@@ -66,6 +66,15 @@ struct EngineState {
     last_camera: Vec3,
     /// Canvas revision at the last `canvas_snapshot` call.
     seen_revision: u64,
+    /// Canvas time, ms: accumulated (clamped) frame time. Stamps every
+    /// mark so a saved work can be replayed as a timelapse.
+    clock_ms: f64,
+}
+
+impl EngineState {
+    fn clock_u32(&self) -> u32 {
+        self.clock_ms.clamp(0.0, u32::MAX as f64) as u32
+    }
 }
 
 impl EngineState {
@@ -105,6 +114,7 @@ impl Engine {
                 color_index: 0,
                 last_camera: Vec3::ZERO,
                 seen_revision: 0,
+                clock_ms: 0.0,
             }),
         })
     }
@@ -121,6 +131,7 @@ impl Engine {
         } else {
             1.0 / 60.0
         };
+        s.clock_ms += dt as f64 * 1000.0;
         // The can un-mixes over time; decay is frame-rate independent.
         s.shake_level *= (-dt / SHAKE_DECAY_TAU_S).exp();
         if s.shake_level < 0.001 {
@@ -192,6 +203,10 @@ impl Engine {
                         palette_index: s.color_index,
                         dabs: Vec::new(),
                         drips: Vec::new(),
+                        timing: Some(StrokeTiming {
+                            start_ms: s.clock_u32(),
+                            ..Default::default()
+                        }),
                     });
                 }
                 // Incidence geometry: how obliquely the spray cone meets the
@@ -206,17 +221,26 @@ impl Engine {
                     dt,
                     shake_level: s.shake_level,
                 };
+                let now_ms = s.clock_u32();
                 if let (Some(p), Some(stroke)) = (&mut s.painter, &mut s.active_stroke) {
                     let before = stroke.dabs.len();
                     p.advance(uv, &ctx, &mut stroke.dabs);
                     dabs_added = (stroke.dabs.len() - before) as u32;
                     canvas_changed |= dabs_added > 0;
+                    if let Some(t) = &mut stroke.timing {
+                        stamp_dab_times(t, now_ms, dt, dabs_added as usize);
+                    }
                     // 垂れ: oversaturated cells run down the wall (real mode).
                     if s.mode == SprayMode::Real {
                         for i in before..stroke.dabs.len() {
                             let dab = stroke.dabs[i];
                             if let Some(density) = s.density.accumulate(&dab) {
                                 stroke.drips.push(spawn_drip(dab.uv, density, &mut s.rng));
+                                if let Some(t) = &mut stroke.timing {
+                                    let at = t.dab_ms.get(i).copied().unwrap_or(0);
+                                    let floor = t.drip_ms.last().copied().unwrap_or(0);
+                                    t.drip_ms.push(at.max(floor));
+                                }
                                 canvas_changed = true;
                             }
                         }
@@ -415,7 +439,8 @@ impl Engine {
         }
     }
 
-    /// Serialize the canvas (v1 wire format). Upload-ready for later phases.
+    /// Serialize the canvas (GFXC v3, with stroke timing). Upload-ready for
+    /// later phases.
     pub fn serialize_canvas(&self) -> Vec<u8> {
         let s = self.state.lock().unwrap();
         let created = std::time::SystemTime::now()
@@ -431,9 +456,30 @@ impl Engine {
             serialize::decode(&bytes).map_err(CoreError::CorruptData)?;
         let mut s = self.state.lock().unwrap();
         s.end_stroke();
+        // Continue the clock after the loaded work so new strokes replay
+        // after the old ones.
+        let loaded_end = strokes
+            .iter()
+            .filter_map(|st| st.timing.as_ref().map(StrokeTiming::end_ms))
+            .max()
+            .unwrap_or(0);
+        s.clock_ms = s.clock_ms.max(loaded_end as f64);
         s.canvas.replace(frame, strokes);
         s.density.reset();
         Ok(())
+    }
+}
+
+/// Time-stamp the `added` dabs appended this tick. They were laid along the
+/// path covered during the last `dt`, so spread them evenly across it
+/// instead of piling them on the frame boundary.
+fn stamp_dab_times(t: &mut StrokeTiming, now_ms: u32, dt: f32, added: usize) {
+    let end = now_ms.saturating_sub(t.start_ms);
+    let span = (dt * 1000.0).round() as u32;
+    let floor = t.dab_ms.last().copied().unwrap_or(0);
+    for k in 1..=added {
+        let back = span * (added - k) as u32 / added as u32;
+        t.dab_ms.push(end.saturating_sub(back).max(floor));
     }
 }
 
