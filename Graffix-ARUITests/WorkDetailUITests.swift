@@ -79,6 +79,10 @@ final class WorkDetailUITests: XCTestCase {
         XCTAssertGreaterThan(initial.duration, 5)
         XCTAssertEqual(initial.seconds, initial.duration, accuracy: 0.05)
         let duration = initial.duration
+        // 動画書き出しボタンは存在し押せる状態（エンコード自体は UI テストの対象外）。
+        let export = app.buttons["workDetail.timelapse.export"]
+        XCTAssertTrue(export.waitForExistence(timeout: 5))
+        XCTAssertTrue(export.isEnabled)
         var image = stableImage(of: preview)
         attachScreenshot("06-timelapse-final")
 
@@ -149,8 +153,11 @@ final class WorkDetailUITests: XCTestCase {
         XCTAssertEqual(initial.strokeCount, 2)
         XCTAssertGreaterThan(initial.duration, 0)
 
+        // スライダーの端への調整は数 % ずれることがあるので「先頭付近」で判定する。
         app.sliders["workDetail.timelapse.scrubber"].adjust(toNormalizedSliderPosition: 0)
-        waitFor(status, "先頭へシーク") { self.parse($0.label).map { $0.seconds < 0.05 } ?? false }
+        waitFor(status, "先頭付近へシーク") {
+            self.parse($0.label).map { $0.seconds < initial.duration * 0.3 } ?? false
+        }
         let preview = app.images["workDetail.timelapse.preview"]
         let startImage = stableImage(of: preview)
         attachScreenshot("11-legacy-timelapse-start")

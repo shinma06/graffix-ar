@@ -343,6 +343,7 @@ private struct TimelapsePlayerSection: View {
                 }
                 .buttonStyle(.bordered)
                 .disabled(info.strokeCount == 0)
+                .accessibilityIdentifier("workDetail.timelapse.export")
             }
 
             Text(String(format: "%d × %d ・ %d fps ・ 約 %.1f 秒（%@、最後に完成画を表示）",
