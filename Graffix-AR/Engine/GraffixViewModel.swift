@@ -10,10 +10,11 @@ import os
 @MainActor
 final class GraffixViewModel {
     let engine: Engine
-    let palette: [PaletteEntryF]
-    /// 書き方 presets (casual) / ノズル caps (real), straight from the core.
-    let presets: [NamedEntryF]
-    let caps: [NamedEntryF]
+    /// Supported spray colors / 書き方 presets (casual) / ノズル caps (real),
+    /// straight from the core. Labels live in `CoreLabels.swift`.
+    let sprayColors: [SprayColorValueF]
+    let presets: [BrushPresetF]
+    let caps: [SprayCapF]
 
     // Input to the engine, set by the spray button and read on the AR queue.
     let sprayInput = SprayInput()
@@ -46,23 +47,23 @@ final class GraffixViewModel {
         }
     }
 
-    var presetIndex: UInt8 = 0 {
+    var preset: BrushPresetF = .broad {
         didSet {
-            engine.setPresetIndex(index: presetIndex)
+            engine.setPreset(preset: preset)
             haptics.click()
         }
     }
 
-    var capIndex: UInt8 = 1 {
+    var cap: SprayCapF = .standard {
         didSet {
-            engine.setCapIndex(index: capIndex)
+            engine.setCap(cap: cap)
             // キャップ交換のクリック感。
             haptics.click()
         }
     }
 
-    var colorIndex: UInt8 = 0 {
-        didSet { engine.setColorIndex(index: colorIndex) }
+    var color: SprayColorF = .white {
+        didSet { engine.setColor(color: color) }
     }
 
     var spraying = false {
@@ -71,13 +72,13 @@ final class GraffixViewModel {
 
     init(engine: Engine) {
         self.engine = engine
-        palette = engine.palette()
-        presets = engine.presets()
-        caps = engine.caps()
-        engine.setColorIndex(index: 0)
+        sprayColors = supportedSprayColors()
+        presets = supportedBrushPresets()
+        caps = supportedSprayCaps()
+        engine.setColor(color: color)
         engine.setMode(mode: sprayMode)
-        engine.setPresetIndex(index: presetIndex)
-        engine.setCapIndex(index: capIndex)
+        engine.setPreset(preset: preset)
+        engine.setCap(cap: cap)
         shakeDetector.onShake = { [weak self] in
             Task { @MainActor in self?.canShaken() }
         }

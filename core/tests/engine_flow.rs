@@ -2,7 +2,9 @@
 //! spray strokes, modes/caps/shake, undo, and canvas serialization
 //! round-trip — the whole core loop the shell drives, minus the rendering.
 
-use graffix_core::engine::Engine;
+use graffix_core::engine::{
+    supported_brush_presets, supported_spray_caps, supported_spray_colors, Engine,
+};
 use graffix_core::ffi::*;
 use std::sync::Arc;
 
@@ -172,13 +174,22 @@ fn caps_change_the_footprint() {
     for _ in 0..3 {
         e.shake();
     }
-    assert_eq!(e.caps().len(), 4);
-    assert_eq!(e.presets().len(), 4);
+    assert_eq!(
+        supported_spray_caps(),
+        [
+            SprayCapF::Fat,
+            SprayCapF::Standard,
+            SprayCapF::Skinny,
+            SprayCapF::Needle
+        ]
+    );
+    assert_eq!(supported_brush_presets().len(), 4);
+    assert_eq!(e.cap(), SprayCapF::Standard);
 
-    e.set_cap_index(3); // ニードル
+    e.set_cap(SprayCapF::Needle);
     e.tick(input(forward(), true));
     e.tick(input(forward(), false));
-    e.set_cap_index(0); // ファット
+    e.set_cap(SprayCapF::Fat);
     e.tick(input(v3(0.3, 0.0, 1.0), true));
     e.tick(input(forward(), false));
 
@@ -331,7 +342,7 @@ fn saved_work_exports_timelapse_video_frames() {
     let scene = SceneConfigF {
         lighting: SceneLightingF::Overcast,
         material: WallMaterialF::Plaster,
-        wall_color_index: 0,
+        wall_color: None,
     };
     let job = work.clone().timelapse_export(request, scene);
     let plan = job.plan();
@@ -353,4 +364,24 @@ fn saved_work_exports_timelapse_video_frames() {
     let finished = work.render_scene(scene, FramingF::FitWork, 120, 90);
     assert_eq!(last.rgba, finished.rgba);
     assert_ne!(first.rgba, finished.rgba);
+}
+
+#[test]
+fn spray_color_id_maps_to_the_stored_palette_index() {
+    let e = locked_engine(1.0);
+    assert_eq!(e.color(), SprayColorF::White);
+    assert_eq!(e.preset(), supported_brush_presets()[0]);
+    e.set_color(SprayColorF::Red);
+    assert_eq!(e.color(), SprayColorF::Red);
+    e.tick(input(forward(), true));
+    e.tick(input(forward(), false));
+    let snap = e.canvas_snapshot();
+    let colors = supported_spray_colors();
+    let red = colors
+        .iter()
+        .position(|c| c.id == SprayColorF::Red)
+        .unwrap();
+    assert_eq!(snap.strokes[0].palette_index as usize, red);
+    assert_eq!(red, 3);
+    assert_eq!(snap.strokes[0].color, colors[red].rgba);
 }
