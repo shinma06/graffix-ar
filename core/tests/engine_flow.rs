@@ -1,0 +1,262 @@
+//! End-to-end exercise of the UniFFI-facing Engine: planes in, wall lock,
+//! spray strokes, modes/caps/shake, undo, and canvas serialization
+//! round-trip — the whole core loop the shell drives, minus the rendering.
+
+use graffix_core::engine::Engine;
+use graffix_core::ffi::*;
+use std::sync::Arc;
+
+fn v3(x: f32, y: f32, z: f32) -> Vec3F {
+    Vec3F { x, y, z }
+}
+
+fn wall(id: u64, center: Vec3F) -> PlaneObservationF {
+    PlaneObservationF {
+        id,
+        center,
+        normal: v3(0.0, 0.0, -1.0),
+        axis_u: v3(1.0, 0.0, 0.0),
+        half_extent_u: 1.0,
+        half_extent_v: 1.0,
+    }
+}
+
+fn input(ray_dir: Vec3F, spraying: bool) -> FrameInputF {
+    input_dt(ray_dir, spraying, 1.0 / 60.0)
+}
+
+fn input_dt(ray_dir: Vec3F, spraying: bool, dt: f32) -> FrameInputF {
+    FrameInputF {
+        camera_position: v3(0.0, 1.5, 0.0),
+        ray_origin: v3(0.0, 1.5, 0.0),
+        ray_dir,
+        plane_upserts: vec![],
+        plane_removals: vec![],
+        lidar_center_depth_m: None,
+        tracking: TrackingStateF::Normal,
+        spraying,
+        dt_seconds: dt,
+    }
+}
+
+fn forward() -> Vec3F {
+    v3(0.0, 0.0, 1.0)
+}
+
+/// Spawn an engine with one wall `z` meters ahead, aimed and locked.
+fn locked_engine(wall_z: f32) -> Arc<Engine> {
+    let e = Engine::new();
+    let mut f = input(forward(), false);
+    f.plane_upserts.push(wall(42, v3(0.0, 1.5, wall_z)));
+    e.tick(f);
+    assert_eq!(e.lock_aimed(), Some(42));
+    e
+}
+
+#[test]
+fn aim_lock_spray_serialize() {
+    let e = Engine::new();
+
+    // Wall appears 2 m ahead.
+    let mut f = input(forward(), false);
+    f.plane_upserts.push(wall(42, v3(0.0, 1.5, 2.0)));
+    let out = e.tick(f);
+    assert_eq!(out.aimed_wall_id, Some(42));
+    assert_eq!(e.wall_count(), 1);
+
+    // Lock the aimed wall.
+    assert_eq!(e.lock_aimed(), Some(42));
+
+    // Hold spray and sweep the nozzle sideways across 5 frames.
+    let mut dab_total = 0;
+    for i in 1..=5 {
+        let out = e.tick(input(v3(i as f32 * 0.1, 0.0, 2.0), true));
+        assert!(out.stroke_active);
+        assert!(out.spray.spraying);
+        dab_total += out.dabs_added;
+    }
+    assert!(dab_total > 0);
+
+    // Release: stroke commits.
+    let out = e.tick(input(forward(), false));
+    assert!(!out.stroke_active);
+    assert!(!out.spray.spraying);
+    let snap = e.canvas_snapshot();
+    assert_eq!(snap.strokes.len(), 1);
+    assert_eq!(snap.dab_count, dab_total);
+    assert!(snap.frame.is_some());
+
+    // Undo removes the stroke; redo brings it back.
+    assert!(e.undo());
+    assert_eq!(e.canvas_snapshot().dab_count, 0);
+    assert!(e.redo());
+    assert_eq!(e.canvas_snapshot().dab_count, dab_total);
+
+    // Serialize -> load into a fresh engine -> identical canvas.
+    let bytes = e.serialize_canvas();
+    let e2 = Engine::new();
+    e2.load_canvas(bytes).unwrap();
+    let snap2 = e2.canvas_snapshot();
+    assert_eq!(snap2.dab_count, dab_total);
+    assert_eq!(snap2.strokes.len(), 1);
+}
+
+#[test]
+fn no_spray_without_lock_and_corrupt_load_fails() {
+    let e = Engine::new();
+    let mut f = input(forward(), true);
+    f.plane_upserts.push(wall(1, v3(0.0, 1.5, 2.0)));
+    // Spraying while only aimed (not locked) paints nothing.
+    let out = e.tick(f);
+    assert_eq!(out.dabs_added, 0);
+    assert!(!out.stroke_active);
+    assert_eq!(e.canvas_snapshot().dab_count, 0);
+
+    // Corrupt bytes are rejected.
+    assert!(e.load_canvas(b"not a canvas".to_vec()).is_err());
+}
+
+#[test]
+fn unlock_stops_stroke_and_lost_wall_unlocks() {
+    let e = Engine::new();
+    let mut f = input(forward(), false);
+    f.plane_upserts.push(wall(9, v3(0.0, 1.5, 2.0)));
+    e.tick(f);
+    e.lock_aimed();
+    e.tick(input(v3(0.2, 0.0, 2.0), true));
+    assert!(e.canvas_snapshot().dab_count > 0);
+
+    // Plane disappears: engine drops the lock and commits the stroke.
+    let mut f = input(forward(), true);
+    f.plane_removals.push(9);
+    let out = e.tick(f);
+    assert_eq!(out.locked_wall_id, None);
+    assert!(!out.stroke_active);
+}
+
+#[test]
+fn real_mode_tilt_produces_elliptical_dabs() {
+    let e = locked_engine(1.0);
+    e.set_mode(SprayModeF::Real);
+    // Fresh can for clean output.
+    for _ in 0..3 {
+        e.shake();
+    }
+
+    // Head-on stamp: a circle (major == minor, no gradient).
+    e.tick(input(forward(), true));
+    e.tick(input(forward(), false));
+    // Tilted stroke: ray leans +x in world space.
+    e.tick(input(v3(0.5, 0.0, 0.866), true));
+    e.tick(input(forward(), false));
+
+    let snap = e.canvas_snapshot();
+    assert_eq!(snap.strokes.len(), 2);
+    let head_on = snap.strokes[0].dabs[0];
+    assert!((head_on.radius_major_m - head_on.radius_minor_m).abs() < 1e-6);
+    let tilted = snap.strokes[1].dabs[0];
+    assert!(
+        tilted.radius_major_m > tilted.radius_minor_m * 1.05,
+        "tilted dab should be elliptical: {:?}",
+        tilted
+    );
+    // Canvas u points world -x; the ray leans +x so the dense (near) side is
+    // world -x = +u in wall-local space.
+    assert!(tilted.gradient_u > 0.5, "gradient {:?}", tilted.gradient_u);
+}
+
+#[test]
+fn caps_change_the_footprint() {
+    let e = locked_engine(1.0);
+    e.set_mode(SprayModeF::Real);
+    for _ in 0..3 {
+        e.shake();
+    }
+    assert_eq!(e.caps().len(), 4);
+    assert_eq!(e.presets().len(), 4);
+
+    e.set_cap_index(3); // ニードル
+    e.tick(input(forward(), true));
+    e.tick(input(forward(), false));
+    e.set_cap_index(0); // ファット
+    e.tick(input(v3(0.3, 0.0, 1.0), true));
+    e.tick(input(forward(), false));
+
+    let snap = e.canvas_snapshot();
+    let needle = snap.strokes[0].dabs[0];
+    let fat = snap.strokes[1].dabs[0];
+    assert!(
+        fat.radius_minor_m > needle.radius_minor_m * 3.0,
+        "fat cap should dwarf needle: needle={} fat={}",
+        needle.radius_minor_m,
+        fat.radius_minor_m
+    );
+}
+
+#[test]
+fn shake_level_decays_and_low_shake_speckles_real_mode() {
+    // Decay: three shakes fill the can; ~8 s of 0.5 s ticks drop it to ~60%.
+    let e = Engine::new();
+    for _ in 0..3 {
+        e.shake();
+    }
+    assert!(e.shake_level() > 0.95);
+    for _ in 0..8 {
+        e.tick(input_dt(forward(), false, 0.5));
+    }
+    let level = e.shake_level();
+    assert!(level < 0.75 && level > 0.4, "level after decay: {level}");
+    // Decay also flows through the per-frame spray state.
+    let out = e.tick(input(forward(), false));
+    assert!((out.spray.shake_level - e.shake_level()).abs() < 1e-6);
+
+    // Speckle: unshaken dabs are fainter than shaken dabs in Real mode.
+    let e2 = locked_engine(0.5);
+    e2.set_mode(SprayModeF::Real);
+    e2.tick(input(forward(), true));
+    e2.tick(input(forward(), false));
+    let faint = e2.canvas_snapshot().strokes[0].dabs[0].opacity;
+    for _ in 0..3 {
+        e2.shake();
+    }
+    e2.tick(input(v3(0.05, 0.0, 0.5), true));
+    e2.tick(input(forward(), false));
+    let snap = e2.canvas_snapshot();
+    let strong = snap.strokes[1].dabs[0].opacity;
+    assert!(faint < strong * 0.7, "faint={faint} strong={strong}");
+
+    // Casual mode never speckles: same spot, no shakes, preset opacity.
+    let e3 = locked_engine(0.5);
+    e3.tick(input(forward(), true));
+    e3.tick(input(forward(), false));
+    let casual = e3.canvas_snapshot().strokes[0].dabs[0].opacity;
+    assert!((casual - 0.90).abs() < 1e-6); // 太ブラシ preset
+}
+
+#[test]
+fn stationary_spray_drips_in_real_mode_only() {
+    // Close wall (inside the opacity plateau), freshly shaken can, held
+    // still: paint pools and must eventually run.
+    let e = locked_engine(0.3);
+    e.set_mode(SprayModeF::Real);
+    for _ in 0..3 {
+        e.shake();
+    }
+    for _ in 0..80 {
+        e.tick(input(forward(), true));
+    }
+    let snap = e.canvas_snapshot();
+    let drips: usize = snap.strokes.iter().map(|s| s.drips.len()).sum();
+    assert!(drips >= 1, "oversaturated wall should drip");
+    let drip = snap.strokes[0].drips[0];
+    assert!(drip.len_m > 0.0 && drip.width_m > 0.0);
+
+    // Same dwelling in casual mode never saturates: no drips, stable preset.
+    let e2 = locked_engine(0.3);
+    for _ in 0..80 {
+        e2.tick(input(forward(), true));
+    }
+    let snap2 = e2.canvas_snapshot();
+    let drips2: usize = snap2.strokes.iter().map(|s| s.drips.len()).sum();
+    assert_eq!(drips2, 0);
+}

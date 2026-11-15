@@ -1,0 +1,23 @@
+[package]
+name = "graffix-core"
+version = "0.1.0"
+edition = "2021"
+description = "Shibuya Graffix AR core engine: wall registry, distance model, spray engine, canvas serialization. Pure Rust, exposed to Swift via UniFFI."
+license = "MIT"
+
+[lib]
+# `rlib` for host unit tests / tooling, `staticlib` for the iOS XCFramework.
+crate-type = ["rlib", "staticlib"]
+
+[dependencies]
+uniffi = "0.29"
+
+[features]
+# `cargo run --features cli --bin uniffi-bindgen` gives us bindgen without a
+# separate `cargo install`; used by scripts/build-xcframework.sh.
+cli = ["uniffi/cli"]
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "uniffi-bindgen.rs"
+required-features = ["cli"]
