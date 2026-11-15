@@ -4,8 +4,8 @@ import Foundation
 /// ローカルに保存した自分の作品 1 件。
 /// ファイルは Documents/works/<id>.json（本レコード）と <id>.gfxc
 /// （GFXC シリアライズ済みキャンバス）に分かれる。
-/// 本格的な作品管理ページは後のパス。ここではマップのピンと簡易一覧に
-/// 必要な分だけ保持する。
+/// 作品詳細（シーンシミュレーション・タイムラプス）は GFXC 側の
+/// データだけで描けるので、レコードはマップのピンと一覧に必要な分だけ。
 struct LocalWorkRecord: Codable, Identifiable, Hashable {
     /// UUID。ファイル名（<id>.json / <id>.gfxc）にも使う。
     var id: String
@@ -73,6 +73,11 @@ final class LocalWorkStore {
         try encoder.encode(record).write(to: recordURL(id: id))
         works.insert(record, at: 0)
         return record
+    }
+
+    /// 保存済みの GFXC バイト列（作品詳細でコアに渡す）。
+    func canvasBytes(for record: LocalWorkRecord) throws -> Data {
+        try Data(contentsOf: worksDir.appendingPathComponent("\(record.id).gfxc"))
     }
 
     func delete(_ record: LocalWorkRecord) {
