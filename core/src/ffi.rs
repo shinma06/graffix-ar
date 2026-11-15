@@ -56,12 +56,45 @@ pub enum SprayModeF {
     Real,
 }
 
-/// A named picker entry (brush preset or spray cap) for the UI.
-#[derive(Clone, Debug, uniffi::Record)]
-pub struct NamedEntryF {
-    pub index: u8,
-    /// Japanese display label.
-    pub name: String,
+/// Casual-mode brush preset (stable identifier; display labels live in the
+/// shell).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, uniffi::Enum)]
+pub enum BrushPresetF {
+    /// Wide, fairly opaque soft disc.
+    Broad,
+    /// Thin, crisp line.
+    FinePen,
+    /// Medium, fully opaque, hard edge.
+    Marker,
+    /// Very wide, faint, very soft.
+    Soft,
+}
+
+/// Real-mode spray cap (stable identifier), widest first.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, uniffi::Enum)]
+pub enum SprayCapF {
+    Fat,
+    Standard,
+    Skinny,
+    Needle,
+}
+
+/// Spray paint color (stable identifier). Saved strokes store the palette
+/// index, not this id; the core maps between them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, uniffi::Enum)]
+pub enum SprayColorF {
+    White,
+    Black,
+    Silver,
+    Red,
+    Orange,
+    Yellow,
+    Green,
+    Teal,
+    Blue,
+    Purple,
+    Pink,
+    Brown,
 }
 
 /// Everything the engine needs for one frame. The shell collects plane
@@ -193,12 +226,11 @@ pub struct CanvasSnapshotF {
     pub dab_count: u32,
 }
 
-/// A spray-can color entry for the UI palette.
-#[derive(Clone, Debug, uniffi::Record)]
-pub struct PaletteEntryF {
-    /// Japanese display label.
-    pub name: String,
-    pub color: ColorF,
+/// A supported spray color and the paint color it lays down.
+#[derive(Clone, Copy, Debug, PartialEq, uniffi::Record)]
+pub struct SprayColorValueF {
+    pub id: SprayColorF,
+    pub rgba: ColorF,
 }
 
 /// Engine errors surfaced across the FFI.

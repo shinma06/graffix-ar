@@ -5,14 +5,14 @@ use std::sync::{Arc, Mutex};
 use crate::canvas::{dab_f, drip_f, Canvas, Stroke, StrokeTiming};
 use crate::distance::{DistanceFilter, Tracking};
 use crate::ffi::{
-    CanvasFrameF, CanvasSnapshotF, CoreError, FrameInputF, FrameOutputF, NamedEntryF,
-    PaletteEntryF, SprayModeF, SprayStateF, TrackingStateF, Vec2F,
+    BrushPresetF, CanvasFrameF, CanvasSnapshotF, CoreError, FrameInputF, FrameOutputF, SprayCapF,
+    SprayColorF, SprayColorValueF, SprayModeF, SprayStateF, TrackingStateF, Vec2F,
 };
 use crate::math::{PlaneFrame, Ray, Vec2, Vec3};
 use crate::palette;
 use crate::serialize;
 use crate::spray::{
-    spawn_drip, DensityField, Rng, SprayContext, SprayMode, StrokePainter, CAPS, PRESETS,
+    self, spawn_drip, DensityField, Rng, SprayContext, SprayMode, StrokePainter, CAPS, PRESETS,
 };
 use crate::wall::WallRegistry;
 
@@ -41,13 +41,31 @@ impl From<SprayMode> for SprayModeF {
     }
 }
 
+/// Supported casual-mode brush presets, in core table order.
+#[uniffi::export]
+pub fn supported_brush_presets() -> Vec<BrushPresetF> {
+    PRESETS.iter().map(|p| p.id).collect()
+}
+
+/// Supported real-mode spray caps, widest first.
+#[uniffi::export]
+pub fn supported_spray_caps() -> Vec<SprayCapF> {
+    CAPS.iter().map(|c| c.id).collect()
+}
+
+/// Supported spray colors and their paint colors, in palette order.
+#[uniffi::export]
+pub fn supported_spray_colors() -> Vec<SprayColorValueF> {
+    palette::values()
+}
+
 struct EngineState {
     registry: WallRegistry,
     distance: DistanceFilter,
     canvas: Canvas,
     mode: SprayMode,
-    cap_index: u8,
-    preset_index: u8,
+    cap: SprayCapF,
+    preset: BrushPresetF,
     /// Can-shake level 0..1, decaying per tick. Real mode only.
     shake_level: f32,
     /// Oversaturation tracking that spawns drips (real mode only).
@@ -101,8 +119,8 @@ impl Engine {
                 distance: DistanceFilter::default(),
                 canvas: Canvas::new(),
                 mode: SprayMode::Casual,
-                cap_index: 1, // スタンダード
-                preset_index: 0,
+                cap: SprayCapF::Standard,
+                preset: PRESETS[0].id,
                 shake_level: 0.0,
                 density: DensityField::default(),
                 rng: Rng::new(0x9E37_79B1),
@@ -195,8 +213,8 @@ impl Engine {
                     s.stroke_seed += 1;
                     s.painter = Some(StrokePainter::new(
                         s.mode,
-                        &CAPS[s.cap_index as usize],
-                        &PRESETS[s.preset_index as usize],
+                        spray::cap(s.cap),
+                        spray::preset(s.preset),
                         s.stroke_seed,
                     ));
                     s.active_stroke = Some(Stroke {
@@ -308,48 +326,26 @@ impl Engine {
         self.state.lock().unwrap().mode.into()
     }
 
-    /// Brush presets for casual mode (書き方 picker entries).
-    pub fn presets(&self) -> Vec<NamedEntryF> {
-        PRESETS
-            .iter()
-            .enumerate()
-            .map(|(i, p)| NamedEntryF {
-                index: i as u8,
-                name: p.name.to_string(),
-            })
-            .collect()
-    }
-
-    pub fn set_preset_index(&self, index: u8) {
+    /// Casual-mode brush preset. Applies to the next stroke.
+    pub fn set_preset(&self, preset: BrushPresetF) {
         let mut s = self.state.lock().unwrap();
         s.end_stroke();
-        s.preset_index = index % PRESETS.len() as u8;
+        s.preset = preset;
     }
 
-    pub fn preset_index(&self) -> u8 {
-        self.state.lock().unwrap().preset_index
-    }
-
-    /// Spray caps for real mode (ノズル picker entries).
-    pub fn caps(&self) -> Vec<NamedEntryF> {
-        CAPS.iter()
-            .enumerate()
-            .map(|(i, c)| NamedEntryF {
-                index: i as u8,
-                name: c.name.to_string(),
-            })
-            .collect()
+    pub fn preset(&self) -> BrushPresetF {
+        self.state.lock().unwrap().preset
     }
 
     /// Swap the spray cap (real mode). Applies to the next stroke.
-    pub fn set_cap_index(&self, index: u8) {
+    pub fn set_cap(&self, cap: SprayCapF) {
         let mut s = self.state.lock().unwrap();
         s.end_stroke();
-        s.cap_index = index % CAPS.len() as u8;
+        s.cap = cap;
     }
 
-    pub fn cap_index(&self) -> u8 {
-        self.state.lock().unwrap().cap_index
+    pub fn cap(&self) -> SprayCapF {
+        self.state.lock().unwrap().cap
     }
 
     /// 缶を振る: one shake gesture mixes the can a bit more.
@@ -363,18 +359,14 @@ impl Engine {
         self.state.lock().unwrap().shake_level
     }
 
-    /// Current spray color (palette index). Applies to the next stroke.
-    pub fn set_color_index(&self, index: u8) {
+    /// Current spray color. Applies to the next stroke.
+    pub fn set_color(&self, color: SprayColorF) {
         let mut s = self.state.lock().unwrap();
-        s.color_index = index % palette::PALETTE.len() as u8;
+        s.color_index = palette::index_of(color);
     }
 
-    pub fn color_index(&self) -> u8 {
-        self.state.lock().unwrap().color_index
-    }
-
-    pub fn palette(&self) -> Vec<PaletteEntryF> {
-        palette::entries()
+    pub fn color(&self) -> SprayColorF {
+        palette::id_of(self.state.lock().unwrap().color_index)
     }
 
     pub fn undo(&self) -> bool {

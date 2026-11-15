@@ -141,8 +141,8 @@ impl PaintLayer {
             return;
         }
         let p = &mut self.px[(y * self.view.width + x) as usize];
-        for c in 0..3 {
-            p[c] = paint.rgb[c] * a + p[c] * (1.0 - a);
+        for (pc, &rc) in p.iter_mut().zip(&paint.rgb) {
+            *pc = rc * a + *pc * (1.0 - a);
         }
         p[3] = a + p[3] * (1.0 - a);
     }

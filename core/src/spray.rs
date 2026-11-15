@@ -28,6 +28,7 @@
 //! Casual mode ignores all of it: a preset is a fixed, forgiving stamp.
 
 use crate::canvas::{Dab, Drip};
+use crate::ffi::{BrushPresetF, SprayCapF};
 use crate::math::Vec2;
 use std::collections::HashMap;
 
@@ -45,8 +46,7 @@ pub enum SprayMode {
 /// distance, angle, speed and shake.
 #[derive(Clone, Copy, Debug)]
 pub struct BrushPreset {
-    /// Japanese display label.
-    pub name: &'static str,
+    pub id: BrushPresetF,
     /// Fixed dab radius, meters.
     pub radius: f32,
     /// Fixed per-dab alpha.
@@ -57,31 +57,31 @@ pub struct BrushPreset {
     pub spacing_ratio: f32,
 }
 
-/// Casual presets (shown as the 書き方 picker in the shell).
+/// Supported casual presets (`Engine` default: the first).
 pub const PRESETS: &[BrushPreset] = &[
     BrushPreset {
-        name: "太ブラシ",
+        id: BrushPresetF::Broad,
         radius: 0.050,
         opacity: 0.90,
         softness: 0.45,
         spacing_ratio: 0.33,
     },
     BrushPreset {
-        name: "細ペン",
+        id: BrushPresetF::FinePen,
         radius: 0.012,
         opacity: 0.95,
         softness: 0.15,
         spacing_ratio: 0.35,
     },
     BrushPreset {
-        name: "マーカー",
+        id: BrushPresetF::Marker,
         radius: 0.035,
         opacity: 1.00,
         softness: 0.06,
         spacing_ratio: 0.30,
     },
     BrushPreset {
-        name: "ふんわり",
+        id: BrushPresetF::Soft,
         radius: 0.090,
         opacity: 0.35,
         softness: 0.90,
@@ -93,8 +93,7 @@ pub const PRESETS: &[BrushPreset] = &[
 /// flow and the contact radius — the same role as fat/skinny caps on a can.
 #[derive(Clone, Copy, Debug)]
 pub struct Cap {
-    /// Japanese display label.
-    pub name: &'static str,
+    pub id: SprayCapF,
     /// tan(cone half-angle): footprint radius growth per meter of distance.
     pub cone_tan: f32,
     /// Paint flow multiplier (1.0 = standard). Scales opacity.
@@ -108,34 +107,49 @@ pub struct Cap {
 /// Real-mode caps, widest first.
 pub const CAPS: &[Cap] = &[
     Cap {
-        name: "ファット",
+        id: SprayCapF::Fat,
         cone_tan: 0.38,
         flow: 1.6,
         r_nozzle: 0.030,
         radius_max: 0.55,
     },
     Cap {
-        name: "スタンダード",
+        id: SprayCapF::Standard,
         cone_tan: 0.23,
         flow: 1.0,
         r_nozzle: 0.015,
         radius_max: 0.35,
     },
     Cap {
-        name: "スキニー",
+        id: SprayCapF::Skinny,
         cone_tan: 0.12,
         flow: 0.6,
         r_nozzle: 0.008,
         radius_max: 0.20,
     },
     Cap {
-        name: "ニードル",
+        id: SprayCapF::Needle,
         cone_tan: 0.05,
         flow: 0.3,
         r_nozzle: 0.004,
         radius_max: 0.10,
     },
 ];
+
+/// The preset table entry for `id`.
+pub fn preset(id: BrushPresetF) -> &'static BrushPreset {
+    PRESETS
+        .iter()
+        .find(|p| p.id == id)
+        .expect("every brush preset is in PRESETS")
+}
+
+/// The cap table entry for `id`.
+pub fn cap(id: SprayCapF) -> &'static Cap {
+    CAPS.iter()
+        .find(|c| c.id == id)
+        .expect("every spray cap is in CAPS")
+}
 
 /// Largest `Cap::flow`, used to normalize the haptics flow output.
 pub const MAX_CAP_FLOW: f32 = 1.6;
@@ -520,7 +534,7 @@ impl Rng {
 mod tests {
     use super::*;
 
-    const STANDARD: &Cap = &CAPS[1]; // スタンダード — matches the old default model
+    const STANDARD: &Cap = &CAPS[1]; // Standard — matches the old default model
 
     fn ctx(distance: f32) -> SprayContext {
         SprayContext {
@@ -685,6 +699,21 @@ mod tests {
     }
 
     #[test]
+    fn every_id_has_one_table_entry() {
+        use BrushPresetF::*;
+        use SprayCapF::*;
+        for id in [Broad, FinePen, Marker, Soft] {
+            assert_eq!(preset(id).id, id);
+            assert_eq!(PRESETS.iter().filter(|p| p.id == id).count(), 1);
+        }
+        for id in [Fat, Standard, Skinny, Needle] {
+            assert_eq!(cap(id).id, id);
+            assert_eq!(CAPS.iter().filter(|c| c.id == id).count(), 1);
+        }
+        assert_eq!((PRESETS.len(), CAPS.len()), (4, 4));
+    }
+
+    #[test]
     fn casual_presets_are_stable() {
         // Distance, angle, speed and shake must not move casual output.
         for (i, preset) in PRESETS.iter().enumerate() {
@@ -702,7 +731,7 @@ mod tests {
                 c.shake_level = shake;
                 p.advance(Vec2::new(0.05 * i as f32, 0.0), &c, &mut dabs);
             }
-            assert!(!dabs.is_empty(), "preset {} emitted nothing", preset.name);
+            assert!(!dabs.is_empty(), "preset {:?} emitted nothing", preset.id);
             for dab in &dabs {
                 assert!((dab.radius_major - preset.radius).abs() < 1e-6);
                 assert!((dab.radius_minor - preset.radius).abs() < 1e-6);
