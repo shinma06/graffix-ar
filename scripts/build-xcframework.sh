@@ -38,11 +38,13 @@ done
 echo "==> Generating Swift bindings"
 mkdir -p "$BINDINGS_DIR" "$GEN_DIR"
 # Any slice carries identical UniFFI metadata; use the device build.
-cargo run --quiet --manifest-path "$CORE/Cargo.toml" \
+# uniffi-bindgen (since 0.30) resolves `cargo metadata` from the current
+# working directory, so run it from inside the core crate.
+(cd "$CORE" && cargo run --quiet \
     --features cli --bin uniffi-bindgen -- \
     generate --library --language swift \
     --out-dir "$BINDINGS_DIR" \
-    "$CORE/target/aarch64-apple-ios/$PROFILE/$LIB_NAME"
+    "$CORE/target/aarch64-apple-ios/$PROFILE/$LIB_NAME")
 
 # UniFFI emits: <ns>.swift, <ns>FFI.h, <ns>FFI.modulemap
 HEADERS_DIR="$BUILD_DIR/headers"

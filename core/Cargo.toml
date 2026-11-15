@@ -10,7 +10,7 @@ license = "MIT"
 crate-type = ["rlib", "staticlib"]
 
 [dependencies]
-uniffi = "0.29"
+uniffi = "0.32"
 
 [features]
 # `cargo run --features cli --bin uniffi-bindgen` gives us bindgen without a

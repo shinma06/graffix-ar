@@ -39,6 +39,52 @@ fileprivate extension ForeignBytes {
     init(bufferPointer: UnsafeBufferPointer<UInt8>) {
         self.init(len: Int32(bufferPointer.count), data: bufferPointer.baseAddress)
     }
+
+    init(rawBufferPointer: UnsafeRawBufferPointer) {
+        self.init(
+            len: Int32(rawBufferPointer.count),
+            data: rawBufferPointer.baseAddress?.assumingMemoryBound(to: UInt8.self)
+        )
+    }
+}
+
+// Converter for `&[u8]` / `[ByRef] bytes` arguments.
+//
+// Conforms to `FfiConverter` so the compiler enforces the full converter
+// method set. Only the scope-bound `lower(_:_body:)` overload is sound —
+// zero-copy byte buffers only flow foreign -> Rust, and only in argument
+// position. The four protocol-witness methods (`lift`, `lower`, `read`,
+// `write`) `fatalError` at runtime if anyone reaches them.
+//
+// The scope-bound `lower` takes a closure because the `ForeignBytes`
+// pointer is only guaranteed valid for the duration of
+// `Data.withUnsafeBytes`. Callers must run the full FFI call inside
+// the closure body.
+fileprivate enum FfiConverterByRefBytes: FfiConverter {
+    typealias SwiftType = Data
+    typealias FfiType = ForeignBytes
+
+    static func lower<R>(_ value: Data, _ body: (ForeignBytes) throws -> R) rethrows -> R {
+        return try value.withUnsafeBytes { rawBuf in
+            try body(ForeignBytes(rawBufferPointer: rawBuf))
+        }
+    }
+
+    static func lower(_ value: Data) -> ForeignBytes {
+        fatalError("ByRef bytes cannot use the plain lower: returning ForeignBytes escapes the Data.withUnsafeBytes scope. Use the scope-bound lower(_:_body:) overload instead.")
+    }
+
+    static func lift(_ value: ForeignBytes) throws -> Data {
+        fatalError("ByRef bytes cannot be lifted: zero-copy &[u8] only flows foreign->Rust")
+    }
+
+    static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Data {
+        fatalError("ByRef bytes cannot be read from a buffer: zero-copy &[u8] is only supported in argument position, not nested in records/options/etc.")
+    }
+
+    static func write(_ value: Data, into buf: inout [UInt8]) {
+        fatalError("ByRef bytes cannot be written to a buffer: zero-copy &[u8] is only supported in argument position, not nested in records/options/etc.")
+    }
 }
 
 // For every type used in the interface, we provide helper methods for conveniently
@@ -352,19 +398,29 @@ private func uniffiTraitInterfaceCallWithError<T, E>(
         callStatus.pointee.errorBuf = FfiConverterString.lower(String(describing: error))
     }
 }
+// Initial value and increment amount for handles.
+// These ensure that SWIFT handles always have the lowest bit set
+fileprivate let UNIFFI_HANDLEMAP_INITIAL: UInt64 = 1
+fileprivate let UNIFFI_HANDLEMAP_DELTA: UInt64 = 2
+
 fileprivate final class UniffiHandleMap<T>: @unchecked Sendable {
     // All mutation happens with this lock held, which is why we implement @unchecked Sendable.
     private let lock = NSLock()
     private var map: [UInt64: T] = [:]
-    private var currentHandle: UInt64 = 1
+    private var currentHandle: UInt64 = UNIFFI_HANDLEMAP_INITIAL
 
     func insert(obj: T) -> UInt64 {
         lock.withLock {
-            let handle = currentHandle
-            currentHandle += 1
-            map[handle] = obj
-            return handle
+            return doInsert(obj)
         }
+    }
+
+    // Low-level insert function, this assumes `lock` is held.
+    private func doInsert(_ obj: T) -> UInt64 {
+        let handle = currentHandle
+        currentHandle += UNIFFI_HANDLEMAP_DELTA
+        map[handle] = obj
+        return handle
     }
 
      func get(handle: UInt64) throws -> T {
@@ -373,6 +429,15 @@ fileprivate final class UniffiHandleMap<T>: @unchecked Sendable {
                 throw UniffiInternalError.unexpectedStaleHandle
             }
             return obj
+        }
+    }
+
+     func clone(handle: UInt64) throws -> UInt64 {
+        try lock.withLock {
+            guard let obj = map[handle] else {
+                throw UniffiInternalError.unexpectedStaleHandle
+            }
+            return doInsert(obj)
         }
     }
 
@@ -516,7 +581,11 @@ fileprivate struct FfiConverterString: FfiConverter {
             return String()
         }
         let bytes = UnsafeBufferPointer<UInt8>(start: value.data!, count: Int(value.len))
-        return String(bytes: bytes, encoding: String.Encoding.utf8)!
+        // Use Swift's native UTF-8 decoder; `String(bytes:encoding:.utf8)` goes
+        // through Foundation's NSString and silently strips a leading U+FEFF BOM.
+        // Invalid UTF-8 substitutes U+FFFD instead of trapping (unreachable
+        // given Rust's `String` invariant).
+        return String(decoding: bytes, as: UTF8.self)
     }
 
     public static func lower(_ value: String) -> RustBuffer {
@@ -532,7 +601,8 @@ fileprivate struct FfiConverterString: FfiConverter {
 
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> String {
         let len: Int32 = try readInt(&buf)
-        return String(bytes: try readBytes(&buf, count: Int(len)), encoding: String.Encoding.utf8)!
+        // See `lift` above for why we avoid Foundation's NSString-backed decoder here.
+        return String(decoding: try readBytes(&buf, count: Int(len)), as: UTF8.self)
     }
 
     public static func write(_ value: String, into buf: inout [UInt8]) {
@@ -663,13 +733,13 @@ public protocol EngineProtocol: AnyObject, Sendable {
 
 }
 open class Engine: EngineProtocol, @unchecked Sendable {
-    fileprivate let pointer: UnsafeMutableRawPointer!
+    fileprivate let handle: UInt64
 
-    /// Used to instantiate a [FFIObject] without an actual pointer, for fakes in tests, mostly.
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
 #if swift(>=5.8)
     @_documentation(visibility: private)
 #endif
-    public struct NoPointer {
+    public struct NoHandle {
         public init() {}
     }
 
@@ -679,43 +749,45 @@ open class Engine: EngineProtocol, @unchecked Sendable {
 #if swift(>=5.8)
     @_documentation(visibility: private)
 #endif
-    required public init(unsafeFromRawPointer pointer: UnsafeMutableRawPointer) {
-        self.pointer = pointer
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
     }
 
     // This constructor can be used to instantiate a fake object.
-    // - Parameter noPointer: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
     //
     // - Warning:
-    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing [Pointer] the FFI lower functions will crash.
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
 #if swift(>=5.8)
     @_documentation(visibility: private)
 #endif
-    public init(noPointer: NoPointer) {
-        self.pointer = nil
+    public init(noHandle: NoHandle) {
+        self.handle = 0
     }
 
 #if swift(>=5.8)
     @_documentation(visibility: private)
 #endif
-    public func uniffiClonePointer() -> UnsafeMutableRawPointer {
-        return try! rustCall { uniffi_graffix_core_fn_clone_engine(self.pointer, $0) }
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_graffix_core_fn_clone_engine(self.handle, $0) }
     }
 public convenience init() {
-    let pointer =
+    let handle =
         try! rustCall() {
-    uniffi_graffix_core_fn_constructor_engine_new($0
+        uniffiCallStatus in
+    uniffi_graffix_core_fn_constructor_engine_new(uniffiCallStatus
     )
 }
-    self.init(unsafeFromRawPointer: pointer)
+    self.init(unsafeFromHandle: handle)
 }
 
     deinit {
-        guard let pointer = pointer else {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
             return
         }
 
-        try! rustCall { uniffi_graffix_core_fn_free_engine(pointer, $0) }
+        try! rustCall { uniffi_graffix_core_fn_free_engine(handle, $0) }
     }
 
 
@@ -723,14 +795,18 @@ public convenience init() {
 
 open func canRedo() -> Bool  {
     return try!  FfiConverterBool.lift(try! rustCall() {
-    uniffi_graffix_core_fn_method_engine_can_redo(self.uniffiClonePointer(),$0
+        uniffiCallStatus in
+    uniffi_graffix_core_fn_method_engine_can_redo(
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
 
 open func canUndo() -> Bool  {
     return try!  FfiConverterBool.lift(try! rustCall() {
-    uniffi_graffix_core_fn_method_engine_can_undo(self.uniffiClonePointer(),$0
+        uniffiCallStatus in
+    uniffi_graffix_core_fn_method_engine_can_undo(
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
@@ -740,14 +816,18 @@ open func canUndo() -> Bool  {
      */
 open func canvasSnapshot() -> CanvasSnapshotF  {
     return try!  FfiConverterTypeCanvasSnapshotF_lift(try! rustCall() {
-    uniffi_graffix_core_fn_method_engine_canvas_snapshot(self.uniffiClonePointer(),$0
+        uniffiCallStatus in
+    uniffi_graffix_core_fn_method_engine_canvas_snapshot(
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
 
 open func capIndex() -> UInt8  {
     return try!  FfiConverterUInt8.lift(try! rustCall() {
-    uniffi_graffix_core_fn_method_engine_cap_index(self.uniffiClonePointer(),$0
+        uniffiCallStatus in
+    uniffi_graffix_core_fn_method_engine_cap_index(
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
@@ -757,20 +837,26 @@ open func capIndex() -> UInt8  {
      */
 open func caps() -> [NamedEntryF]  {
     return try!  FfiConverterSequenceTypeNamedEntryF.lift(try! rustCall() {
-    uniffi_graffix_core_fn_method_engine_caps(self.uniffiClonePointer(),$0
+        uniffiCallStatus in
+    uniffi_graffix_core_fn_method_engine_caps(
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
 
 open func clear()  {try! rustCall() {
-    uniffi_graffix_core_fn_method_engine_clear(self.uniffiClonePointer(),$0
+        uniffiCallStatus in
+    uniffi_graffix_core_fn_method_engine_clear(
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 }
 }
 
 open func colorIndex() -> UInt8  {
     return try!  FfiConverterUInt8.lift(try! rustCall() {
-    uniffi_graffix_core_fn_method_engine_color_index(self.uniffiClonePointer(),$0
+        uniffiCallStatus in
+    uniffi_graffix_core_fn_method_engine_color_index(
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
@@ -779,8 +865,10 @@ open func colorIndex() -> UInt8  {
      * Replace the canvas from serialized bytes.
      */
 open func loadCanvas(bytes: Data)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
-    uniffi_graffix_core_fn_method_engine_load_canvas(self.uniffiClonePointer(),
-        FfiConverterData.lower(bytes),$0
+        uniffiCallStatus in
+    uniffi_graffix_core_fn_method_engine_load_canvas(
+            self.uniffiCloneHandle(),
+        FfiConverterData.lower(bytes),uniffiCallStatus
     )
 }
 }
@@ -790,7 +878,9 @@ open func loadCanvas(bytes: Data)throws   {try rustCallWithError(FfiConverterTyp
      */
 open func lockAimed() -> UInt64?  {
     return try!  FfiConverterOptionUInt64.lift(try! rustCall() {
-    uniffi_graffix_core_fn_method_engine_lock_aimed(self.uniffiClonePointer(),$0
+        uniffiCallStatus in
+    uniffi_graffix_core_fn_method_engine_lock_aimed(
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
@@ -800,29 +890,37 @@ open func lockAimed() -> UInt64?  {
      */
 open func lockWall(id: UInt64) -> UInt64?  {
     return try!  FfiConverterOptionUInt64.lift(try! rustCall() {
-    uniffi_graffix_core_fn_method_engine_lock_wall(self.uniffiClonePointer(),
-        FfiConverterUInt64.lower(id),$0
+        uniffiCallStatus in
+    uniffi_graffix_core_fn_method_engine_lock_wall(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt64.lower(id),uniffiCallStatus
     )
 })
 }
 
 open func mode() -> SprayModeF  {
     return try!  FfiConverterTypeSprayModeF_lift(try! rustCall() {
-    uniffi_graffix_core_fn_method_engine_mode(self.uniffiClonePointer(),$0
+        uniffiCallStatus in
+    uniffi_graffix_core_fn_method_engine_mode(
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
 
 open func palette() -> [PaletteEntryF]  {
     return try!  FfiConverterSequenceTypePaletteEntryF.lift(try! rustCall() {
-    uniffi_graffix_core_fn_method_engine_palette(self.uniffiClonePointer(),$0
+        uniffiCallStatus in
+    uniffi_graffix_core_fn_method_engine_palette(
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
 
 open func presetIndex() -> UInt8  {
     return try!  FfiConverterUInt8.lift(try! rustCall() {
-    uniffi_graffix_core_fn_method_engine_preset_index(self.uniffiClonePointer(),$0
+        uniffiCallStatus in
+    uniffi_graffix_core_fn_method_engine_preset_index(
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
@@ -832,14 +930,18 @@ open func presetIndex() -> UInt8  {
      */
 open func presets() -> [NamedEntryF]  {
     return try!  FfiConverterSequenceTypeNamedEntryF.lift(try! rustCall() {
-    uniffi_graffix_core_fn_method_engine_presets(self.uniffiClonePointer(),$0
+        uniffiCallStatus in
+    uniffi_graffix_core_fn_method_engine_presets(
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
 
 open func redo() -> Bool  {
     return try!  FfiConverterBool.lift(try! rustCall() {
-    uniffi_graffix_core_fn_method_engine_redo(self.uniffiClonePointer(),$0
+        uniffiCallStatus in
+    uniffi_graffix_core_fn_method_engine_redo(
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
@@ -849,7 +951,9 @@ open func redo() -> Bool  {
      */
 open func serializeCanvas() -> Data  {
     return try!  FfiConverterData.lift(try! rustCall() {
-    uniffi_graffix_core_fn_method_engine_serialize_canvas(self.uniffiClonePointer(),$0
+        uniffiCallStatus in
+    uniffi_graffix_core_fn_method_engine_serialize_canvas(
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
@@ -858,8 +962,10 @@ open func serializeCanvas() -> Data  {
      * Swap the spray cap (real mode). Applies to the next stroke.
      */
 open func setCapIndex(index: UInt8)  {try! rustCall() {
-    uniffi_graffix_core_fn_method_engine_set_cap_index(self.uniffiClonePointer(),
-        FfiConverterUInt8.lower(index),$0
+        uniffiCallStatus in
+    uniffi_graffix_core_fn_method_engine_set_cap_index(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt8.lower(index),uniffiCallStatus
     )
 }
 }
@@ -868,8 +974,10 @@ open func setCapIndex(index: UInt8)  {try! rustCall() {
      * Current spray color (palette index). Applies to the next stroke.
      */
 open func setColorIndex(index: UInt8)  {try! rustCall() {
-    uniffi_graffix_core_fn_method_engine_set_color_index(self.uniffiClonePointer(),
-        FfiConverterUInt8.lower(index),$0
+        uniffiCallStatus in
+    uniffi_graffix_core_fn_method_engine_set_color_index(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt8.lower(index),uniffiCallStatus
     )
 }
 }
@@ -879,15 +987,19 @@ open func setColorIndex(index: UInt8)  {try! rustCall() {
      * any in-flight stroke ends first.
      */
 open func setMode(mode: SprayModeF)  {try! rustCall() {
-    uniffi_graffix_core_fn_method_engine_set_mode(self.uniffiClonePointer(),
-        FfiConverterTypeSprayModeF_lower(mode),$0
+        uniffiCallStatus in
+    uniffi_graffix_core_fn_method_engine_set_mode(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeSprayModeF_lower(mode),uniffiCallStatus
     )
 }
 }
 
 open func setPresetIndex(index: UInt8)  {try! rustCall() {
-    uniffi_graffix_core_fn_method_engine_set_preset_index(self.uniffiClonePointer(),
-        FfiConverterUInt8.lower(index),$0
+        uniffiCallStatus in
+    uniffi_graffix_core_fn_method_engine_set_preset_index(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt8.lower(index),uniffiCallStatus
     )
 }
 }
@@ -896,7 +1008,9 @@ open func setPresetIndex(index: UInt8)  {try! rustCall() {
      * 缶を振る: one shake gesture mixes the can a bit more.
      */
 open func shake()  {try! rustCall() {
-    uniffi_graffix_core_fn_method_engine_shake(self.uniffiClonePointer(),$0
+        uniffiCallStatus in
+    uniffi_graffix_core_fn_method_engine_shake(
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 }
 }
@@ -906,7 +1020,9 @@ open func shake()  {try! rustCall() {
      */
 open func shakeLevel() -> Float  {
     return try!  FfiConverterFloat.lift(try! rustCall() {
-    uniffi_graffix_core_fn_method_engine_shake_level(self.uniffiClonePointer(),$0
+        uniffiCallStatus in
+    uniffi_graffix_core_fn_method_engine_shake_level(
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
@@ -917,21 +1033,27 @@ open func shakeLevel() -> Float  {
      */
 open func tick(input: FrameInputF) -> FrameOutputF  {
     return try!  FfiConverterTypeFrameOutputF_lift(try! rustCall() {
-    uniffi_graffix_core_fn_method_engine_tick(self.uniffiClonePointer(),
-        FfiConverterTypeFrameInputF_lower(input),$0
+        uniffiCallStatus in
+    uniffi_graffix_core_fn_method_engine_tick(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeFrameInputF_lower(input),uniffiCallStatus
     )
 })
 }
 
 open func undo() -> Bool  {
     return try!  FfiConverterBool.lift(try! rustCall() {
-    uniffi_graffix_core_fn_method_engine_undo(self.uniffiClonePointer(),$0
+        uniffiCallStatus in
+    uniffi_graffix_core_fn_method_engine_undo(
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
 
 open func unlock()  {try! rustCall() {
-    uniffi_graffix_core_fn_method_engine_unlock(self.uniffiClonePointer(),$0
+        uniffiCallStatus in
+    uniffi_graffix_core_fn_method_engine_unlock(
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 }
 }
@@ -941,10 +1063,13 @@ open func unlock()  {try! rustCall() {
      */
 open func wallCount() -> UInt32  {
     return try!  FfiConverterUInt32.lift(try! rustCall() {
-    uniffi_graffix_core_fn_method_engine_wall_count(self.uniffiClonePointer(),$0
+        uniffiCallStatus in
+    uniffi_graffix_core_fn_method_engine_wall_count(
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
+
 
 
 }
@@ -954,33 +1079,24 @@ open func wallCount() -> UInt32  {
 @_documentation(visibility: private)
 #endif
 public struct FfiConverterTypeEngine: FfiConverter {
-
-    typealias FfiType = UnsafeMutableRawPointer
+    typealias FfiType = UInt64
     typealias SwiftType = Engine
 
-    public static func lift(_ pointer: UnsafeMutableRawPointer) throws -> Engine {
-        return Engine(unsafeFromRawPointer: pointer)
+    public static func lift(_ handle: UInt64) throws -> Engine {
+        return Engine(unsafeFromHandle: handle)
     }
 
-    public static func lower(_ value: Engine) -> UnsafeMutableRawPointer {
-        return value.uniffiClonePointer()
+    public static func lower(_ value: Engine) -> UInt64 {
+        return value.uniffiCloneHandle()
     }
 
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Engine {
-        let v: UInt64 = try readInt(&buf)
-        // The Rust code won't compile if a pointer won't fit in a UInt64.
-        // We have to go via `UInt` because that's the thing that's the size of a pointer.
-        let ptr = UnsafeMutableRawPointer(bitPattern: UInt(truncatingIfNeeded: v))
-        if (ptr == nil) {
-            throw UniffiInternalError.unexpectedNullPointer
-        }
-        return try lift(ptr!)
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
     }
 
     public static func write(_ value: Engine, into buf: inout [UInt8]) {
-        // This fiddling is because `Int` is the thing that's the same size as a pointer.
-        // The Rust code won't compile if a pointer won't fit in a `UInt64`.
-        writeInt(&buf, UInt64(bitPattern: Int64(Int(bitPattern: lower(value)))))
+        writeInt(&buf, lower(value))
     }
 }
 
@@ -988,14 +1104,14 @@ public struct FfiConverterTypeEngine: FfiConverter {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeEngine_lift(_ pointer: UnsafeMutableRawPointer) throws -> Engine {
-    return try FfiConverterTypeEngine.lift(pointer)
+public func FfiConverterTypeEngine_lift(_ handle: UInt64) throws -> Engine {
+    return try FfiConverterTypeEngine.lift(handle)
 }
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeEngine_lower(_ value: Engine) -> UnsafeMutableRawPointer {
+public func FfiConverterTypeEngine_lower(_ value: Engine) -> UInt64 {
     return FfiConverterTypeEngine.lower(value)
 }
 
@@ -1007,7 +1123,7 @@ public func FfiConverterTypeEngine_lower(_ value: Engine) -> UnsafeMutableRawPoi
  * relative to this frame so a saved work can be re-anchored later (phase 2+)
  * by supplying a new world pose for the same wall.
  */
-public struct CanvasFrameF {
+public struct CanvasFrameF: Equatable, Hashable {
     public var origin: Vec3F
     public var axisU: Vec3F
     public var axisV: Vec3F
@@ -1021,39 +1137,15 @@ public struct CanvasFrameF {
         self.axisV = axisV
         self.normal = normal
     }
+
+
+
+
 }
 
 #if compiler(>=6)
 extension CanvasFrameF: Sendable {}
 #endif
-
-
-extension CanvasFrameF: Equatable, Hashable {
-    public static func ==(lhs: CanvasFrameF, rhs: CanvasFrameF) -> Bool {
-        if lhs.origin != rhs.origin {
-            return false
-        }
-        if lhs.axisU != rhs.axisU {
-            return false
-        }
-        if lhs.axisV != rhs.axisV {
-            return false
-        }
-        if lhs.normal != rhs.normal {
-            return false
-        }
-        return true
-    }
-
-    public func hash(into hasher: inout Hasher) {
-        hasher.combine(origin)
-        hasher.combine(axisU)
-        hasher.combine(axisV)
-        hasher.combine(normal)
-    }
-}
-
-
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
@@ -1097,7 +1189,7 @@ public func FfiConverterTypeCanvasFrameF_lower(_ value: CanvasFrameF) -> RustBuf
  * Renderable canvas snapshot. The shell rasterizes `dabs` into a texture
  * placed at `frame`.
  */
-public struct CanvasSnapshotF {
+public struct CanvasSnapshotF: Equatable, Hashable {
     public var frame: CanvasFrameF?
     public var strokes: [StrokeF]
     public var dabCount: UInt32
@@ -1109,35 +1201,15 @@ public struct CanvasSnapshotF {
         self.strokes = strokes
         self.dabCount = dabCount
     }
+
+
+
+
 }
 
 #if compiler(>=6)
 extension CanvasSnapshotF: Sendable {}
 #endif
-
-
-extension CanvasSnapshotF: Equatable, Hashable {
-    public static func ==(lhs: CanvasSnapshotF, rhs: CanvasSnapshotF) -> Bool {
-        if lhs.frame != rhs.frame {
-            return false
-        }
-        if lhs.strokes != rhs.strokes {
-            return false
-        }
-        if lhs.dabCount != rhs.dabCount {
-            return false
-        }
-        return true
-    }
-
-    public func hash(into hasher: inout Hasher) {
-        hasher.combine(frame)
-        hasher.combine(strokes)
-        hasher.combine(dabCount)
-    }
-}
-
-
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
@@ -1178,7 +1250,7 @@ public func FfiConverterTypeCanvasSnapshotF_lower(_ value: CanvasSnapshotF) -> R
 /**
  * Straight RGBA color.
  */
-public struct ColorF {
+public struct ColorF: Equatable, Hashable {
     public var r: UInt8
     public var g: UInt8
     public var b: UInt8
@@ -1192,39 +1264,15 @@ public struct ColorF {
         self.b = b
         self.a = a
     }
+
+
+
+
 }
 
 #if compiler(>=6)
 extension ColorF: Sendable {}
 #endif
-
-
-extension ColorF: Equatable, Hashable {
-    public static func ==(lhs: ColorF, rhs: ColorF) -> Bool {
-        if lhs.r != rhs.r {
-            return false
-        }
-        if lhs.g != rhs.g {
-            return false
-        }
-        if lhs.b != rhs.b {
-            return false
-        }
-        if lhs.a != rhs.a {
-            return false
-        }
-        return true
-    }
-
-    public func hash(into hasher: inout Hasher) {
-        hasher.combine(r)
-        hasher.combine(g)
-        hasher.combine(b)
-        hasher.combine(a)
-    }
-}
-
-
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
@@ -1268,7 +1316,7 @@ public func FfiConverterTypeColorF_lower(_ value: ColorF) -> RustBuffer {
  * One spray stamp (v2): an ellipse at (u, v) in wall-local meters with a
  * density gradient toward the near side.
  */
-public struct DabF {
+public struct DabF: Equatable, Hashable {
     public var u: Float
     public var v: Float
     /**
@@ -1324,59 +1372,15 @@ public struct DabF {
         self.opacity = opacity
         self.softness = softness
     }
+
+
+
+
 }
 
 #if compiler(>=6)
 extension DabF: Sendable {}
 #endif
-
-
-extension DabF: Equatable, Hashable {
-    public static func ==(lhs: DabF, rhs: DabF) -> Bool {
-        if lhs.u != rhs.u {
-            return false
-        }
-        if lhs.v != rhs.v {
-            return false
-        }
-        if lhs.radiusMajorM != rhs.radiusMajorM {
-            return false
-        }
-        if lhs.radiusMinorM != rhs.radiusMinorM {
-            return false
-        }
-        if lhs.rotationRad != rhs.rotationRad {
-            return false
-        }
-        if lhs.gradientU != rhs.gradientU {
-            return false
-        }
-        if lhs.gradientV != rhs.gradientV {
-            return false
-        }
-        if lhs.opacity != rhs.opacity {
-            return false
-        }
-        if lhs.softness != rhs.softness {
-            return false
-        }
-        return true
-    }
-
-    public func hash(into hasher: inout Hasher) {
-        hasher.combine(u)
-        hasher.combine(v)
-        hasher.combine(radiusMajorM)
-        hasher.combine(radiusMinorM)
-        hasher.combine(rotationRad)
-        hasher.combine(gradientU)
-        hasher.combine(gradientV)
-        hasher.combine(opacity)
-        hasher.combine(softness)
-    }
-}
-
-
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
@@ -1429,7 +1433,7 @@ public func FfiConverterTypeDabF_lower(_ value: DabF) -> RustBuffer {
 /**
  * A drip streak running down the wall from (u, v) along -v.
  */
-public struct DripF {
+public struct DripF: Equatable, Hashable {
     public var u: Float
     public var v: Float
     /**
@@ -1457,43 +1461,15 @@ public struct DripF {
         self.widthM = widthM
         self.opacity = opacity
     }
+
+
+
+
 }
 
 #if compiler(>=6)
 extension DripF: Sendable {}
 #endif
-
-
-extension DripF: Equatable, Hashable {
-    public static func ==(lhs: DripF, rhs: DripF) -> Bool {
-        if lhs.u != rhs.u {
-            return false
-        }
-        if lhs.v != rhs.v {
-            return false
-        }
-        if lhs.lenM != rhs.lenM {
-            return false
-        }
-        if lhs.widthM != rhs.widthM {
-            return false
-        }
-        if lhs.opacity != rhs.opacity {
-            return false
-        }
-        return true
-    }
-
-    public func hash(into hasher: inout Hasher) {
-        hasher.combine(u)
-        hasher.combine(v)
-        hasher.combine(lenM)
-        hasher.combine(widthM)
-        hasher.combine(opacity)
-    }
-}
-
-
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
@@ -1540,7 +1516,7 @@ public func FfiConverterTypeDripF_lower(_ value: DripF) -> RustBuffer {
  * add/update/remove events, the camera pose, and the spray-button state and
  * calls `Engine::tick` once per rendered frame.
  */
-public struct FrameInputF {
+public struct FrameInputF: Equatable, Hashable {
     /**
      * Camera world position.
      */
@@ -1610,59 +1586,15 @@ public struct FrameInputF {
         self.spraying = spraying
         self.dtSeconds = dtSeconds
     }
+
+
+
+
 }
 
 #if compiler(>=6)
 extension FrameInputF: Sendable {}
 #endif
-
-
-extension FrameInputF: Equatable, Hashable {
-    public static func ==(lhs: FrameInputF, rhs: FrameInputF) -> Bool {
-        if lhs.cameraPosition != rhs.cameraPosition {
-            return false
-        }
-        if lhs.rayOrigin != rhs.rayOrigin {
-            return false
-        }
-        if lhs.rayDir != rhs.rayDir {
-            return false
-        }
-        if lhs.planeUpserts != rhs.planeUpserts {
-            return false
-        }
-        if lhs.planeRemovals != rhs.planeRemovals {
-            return false
-        }
-        if lhs.lidarCenterDepthM != rhs.lidarCenterDepthM {
-            return false
-        }
-        if lhs.tracking != rhs.tracking {
-            return false
-        }
-        if lhs.spraying != rhs.spraying {
-            return false
-        }
-        if lhs.dtSeconds != rhs.dtSeconds {
-            return false
-        }
-        return true
-    }
-
-    public func hash(into hasher: inout Hasher) {
-        hasher.combine(cameraPosition)
-        hasher.combine(rayOrigin)
-        hasher.combine(rayDir)
-        hasher.combine(planeUpserts)
-        hasher.combine(planeRemovals)
-        hasher.combine(lidarCenterDepthM)
-        hasher.combine(tracking)
-        hasher.combine(spraying)
-        hasher.combine(dtSeconds)
-    }
-}
-
-
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
@@ -1715,7 +1647,7 @@ public func FfiConverterTypeFrameInputF_lower(_ value: FrameInputF) -> RustBuffe
 /**
  * What the engine decided during one tick.
  */
-public struct FrameOutputF {
+public struct FrameOutputF: Equatable, Hashable {
     /**
      * Wall currently under the center ray (lock candidate).
      */
@@ -1801,63 +1733,15 @@ public struct FrameOutputF {
         self.strokeActive = strokeActive
         self.spray = spray
     }
+
+
+
+
 }
 
 #if compiler(>=6)
 extension FrameOutputF: Sendable {}
 #endif
-
-
-extension FrameOutputF: Equatable, Hashable {
-    public static func ==(lhs: FrameOutputF, rhs: FrameOutputF) -> Bool {
-        if lhs.aimedWallId != rhs.aimedWallId {
-            return false
-        }
-        if lhs.lockedWallId != rhs.lockedWallId {
-            return false
-        }
-        if lhs.distanceM != rhs.distanceM {
-            return false
-        }
-        if lhs.distanceReliability != rhs.distanceReliability {
-            return false
-        }
-        if lhs.distanceLidarFused != rhs.distanceLidarFused {
-            return false
-        }
-        if lhs.sprayUv != rhs.sprayUv {
-            return false
-        }
-        if lhs.dabsAdded != rhs.dabsAdded {
-            return false
-        }
-        if lhs.canvasDirty != rhs.canvasDirty {
-            return false
-        }
-        if lhs.strokeActive != rhs.strokeActive {
-            return false
-        }
-        if lhs.spray != rhs.spray {
-            return false
-        }
-        return true
-    }
-
-    public func hash(into hasher: inout Hasher) {
-        hasher.combine(aimedWallId)
-        hasher.combine(lockedWallId)
-        hasher.combine(distanceM)
-        hasher.combine(distanceReliability)
-        hasher.combine(distanceLidarFused)
-        hasher.combine(sprayUv)
-        hasher.combine(dabsAdded)
-        hasher.combine(canvasDirty)
-        hasher.combine(strokeActive)
-        hasher.combine(spray)
-    }
-}
-
-
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
@@ -1912,7 +1796,7 @@ public func FfiConverterTypeFrameOutputF_lower(_ value: FrameOutputF) -> RustBuf
 /**
  * A WGS84 geographic coordinate, degrees.
  */
-public struct GeoPointF {
+public struct GeoPointF: Equatable, Hashable {
     /**
      * Latitude in degrees, -90..90.
      */
@@ -1934,31 +1818,15 @@ public struct GeoPointF {
         self.lat = lat
         self.lon = lon
     }
+
+
+
+
 }
 
 #if compiler(>=6)
 extension GeoPointF: Sendable {}
 #endif
-
-
-extension GeoPointF: Equatable, Hashable {
-    public static func ==(lhs: GeoPointF, rhs: GeoPointF) -> Bool {
-        if lhs.lat != rhs.lat {
-            return false
-        }
-        if lhs.lon != rhs.lon {
-            return false
-        }
-        return true
-    }
-
-    public func hash(into hasher: inout Hasher) {
-        hasher.combine(lat)
-        hasher.combine(lon)
-    }
-}
-
-
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
@@ -1999,7 +1867,7 @@ public func FfiConverterTypeGeoPointF_lower(_ value: GeoPointF) -> RustBuffer {
  * seed, the work-pin provider (other users' works) and the local works
  * store (own works); the core decides which of them show and in what order.
  */
-public struct MapSpotF {
+public struct MapSpotF: Equatable, Hashable {
     /**
      * Stable identifier (seed id, provider id, or local work id).
      */
@@ -2041,47 +1909,15 @@ public struct MapSpotF {
         self.subtitle = subtitle
         self.authorUrl = authorUrl
     }
+
+
+
+
 }
 
 #if compiler(>=6)
 extension MapSpotF: Sendable {}
 #endif
-
-
-extension MapSpotF: Equatable, Hashable {
-    public static func ==(lhs: MapSpotF, rhs: MapSpotF) -> Bool {
-        if lhs.id != rhs.id {
-            return false
-        }
-        if lhs.kind != rhs.kind {
-            return false
-        }
-        if lhs.position != rhs.position {
-            return false
-        }
-        if lhs.title != rhs.title {
-            return false
-        }
-        if lhs.subtitle != rhs.subtitle {
-            return false
-        }
-        if lhs.authorUrl != rhs.authorUrl {
-            return false
-        }
-        return true
-    }
-
-    public func hash(into hasher: inout Hasher) {
-        hasher.combine(id)
-        hasher.combine(kind)
-        hasher.combine(position)
-        hasher.combine(title)
-        hasher.combine(subtitle)
-        hasher.combine(authorUrl)
-    }
-}
-
-
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
@@ -2128,7 +1964,7 @@ public func FfiConverterTypeMapSpotF_lower(_ value: MapSpotF) -> RustBuffer {
 /**
  * A named picker entry (brush preset or spray cap) for the UI.
  */
-public struct NamedEntryF {
+public struct NamedEntryF: Equatable, Hashable {
     public var index: UInt8
     /**
      * Japanese display label.
@@ -2144,31 +1980,15 @@ public struct NamedEntryF {
         self.index = index
         self.name = name
     }
+
+
+
+
 }
 
 #if compiler(>=6)
 extension NamedEntryF: Sendable {}
 #endif
-
-
-extension NamedEntryF: Equatable, Hashable {
-    public static func ==(lhs: NamedEntryF, rhs: NamedEntryF) -> Bool {
-        if lhs.index != rhs.index {
-            return false
-        }
-        if lhs.name != rhs.name {
-            return false
-        }
-        return true
-    }
-
-    public func hash(into hasher: inout Hasher) {
-        hasher.combine(index)
-        hasher.combine(name)
-    }
-}
-
-
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
@@ -2207,7 +2027,7 @@ public func FfiConverterTypeNamedEntryF_lower(_ value: NamedEntryF) -> RustBuffe
 /**
  * A spray-can color entry for the UI palette.
  */
-public struct PaletteEntryF {
+public struct PaletteEntryF: Equatable, Hashable {
     /**
      * Japanese display label.
      */
@@ -2223,31 +2043,15 @@ public struct PaletteEntryF {
         self.name = name
         self.color = color
     }
+
+
+
+
 }
 
 #if compiler(>=6)
 extension PaletteEntryF: Sendable {}
 #endif
-
-
-extension PaletteEntryF: Equatable, Hashable {
-    public static func ==(lhs: PaletteEntryF, rhs: PaletteEntryF) -> Bool {
-        if lhs.name != rhs.name {
-            return false
-        }
-        if lhs.color != rhs.color {
-            return false
-        }
-        return true
-    }
-
-    public func hash(into hasher: inout Hasher) {
-        hasher.combine(name)
-        hasher.combine(color)
-    }
-}
-
-
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
@@ -2290,7 +2094,7 @@ public func FfiConverterTypePaletteEntryF_lower(_ value: PaletteEntryF) -> RustB
  * the wall's local right direction (used to orient local coordinates), and
  * the half extents bound the detected rectangle along (u, v).
  */
-public struct PlaneObservationF {
+public struct PlaneObservationF: Equatable, Hashable {
     public var id: UInt64
     public var center: Vec3F
     public var normal: Vec3F
@@ -2308,47 +2112,15 @@ public struct PlaneObservationF {
         self.halfExtentU = halfExtentU
         self.halfExtentV = halfExtentV
     }
+
+
+
+
 }
 
 #if compiler(>=6)
 extension PlaneObservationF: Sendable {}
 #endif
-
-
-extension PlaneObservationF: Equatable, Hashable {
-    public static func ==(lhs: PlaneObservationF, rhs: PlaneObservationF) -> Bool {
-        if lhs.id != rhs.id {
-            return false
-        }
-        if lhs.center != rhs.center {
-            return false
-        }
-        if lhs.normal != rhs.normal {
-            return false
-        }
-        if lhs.axisU != rhs.axisU {
-            return false
-        }
-        if lhs.halfExtentU != rhs.halfExtentU {
-            return false
-        }
-        if lhs.halfExtentV != rhs.halfExtentV {
-            return false
-        }
-        return true
-    }
-
-    public func hash(into hasher: inout Hasher) {
-        hasher.combine(id)
-        hasher.combine(center)
-        hasher.combine(normal)
-        hasher.combine(axisU)
-        hasher.combine(halfExtentU)
-        hasher.combine(halfExtentV)
-    }
-}
-
-
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
@@ -2396,7 +2168,7 @@ public func FfiConverterTypePlaneObservationF_lower(_ value: PlaneObservationF) 
  * What the spray engine is doing this frame — the shell drives haptics
  * (and the shake hint) purely from this, never from its own guesses.
  */
-public struct SprayStateF {
+public struct SprayStateF: Equatable, Hashable {
     /**
      * Paint is actually leaving the nozzle right now.
      */
@@ -2442,43 +2214,15 @@ public struct SprayStateF {
         self.density = density
         self.shakeLevel = shakeLevel
     }
+
+
+
+
 }
 
 #if compiler(>=6)
 extension SprayStateF: Sendable {}
 #endif
-
-
-extension SprayStateF: Equatable, Hashable {
-    public static func ==(lhs: SprayStateF, rhs: SprayStateF) -> Bool {
-        if lhs.spraying != rhs.spraying {
-            return false
-        }
-        if lhs.mode != rhs.mode {
-            return false
-        }
-        if lhs.flow != rhs.flow {
-            return false
-        }
-        if lhs.density != rhs.density {
-            return false
-        }
-        if lhs.shakeLevel != rhs.shakeLevel {
-            return false
-        }
-        return true
-    }
-
-    public func hash(into hasher: inout Hasher) {
-        hasher.combine(spraying)
-        hasher.combine(mode)
-        hasher.combine(flow)
-        hasher.combine(density)
-        hasher.combine(shakeLevel)
-    }
-}
-
-
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
@@ -2523,7 +2267,7 @@ public func FfiConverterTypeSprayStateF_lower(_ value: SprayStateF) -> RustBuffe
 /**
  * A continuous stroke in one color.
  */
-public struct StrokeF {
+public struct StrokeF: Equatable, Hashable {
     public var paletteIndex: UInt8
     public var color: ColorF
     public var dabs: [DabF]
@@ -2543,39 +2287,15 @@ public struct StrokeF {
         self.dabs = dabs
         self.drips = drips
     }
+
+
+
+
 }
 
 #if compiler(>=6)
 extension StrokeF: Sendable {}
 #endif
-
-
-extension StrokeF: Equatable, Hashable {
-    public static func ==(lhs: StrokeF, rhs: StrokeF) -> Bool {
-        if lhs.paletteIndex != rhs.paletteIndex {
-            return false
-        }
-        if lhs.color != rhs.color {
-            return false
-        }
-        if lhs.dabs != rhs.dabs {
-            return false
-        }
-        if lhs.drips != rhs.drips {
-            return false
-        }
-        return true
-    }
-
-    public func hash(into hasher: inout Hasher) {
-        hasher.combine(paletteIndex)
-        hasher.combine(color)
-        hasher.combine(dabs)
-        hasher.combine(drips)
-    }
-}
-
-
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
@@ -2618,7 +2338,7 @@ public func FfiConverterTypeStrokeF_lower(_ value: StrokeF) -> RustBuffer {
 /**
  * 2D vector (meters in wall-local space unless noted otherwise).
  */
-public struct Vec2F {
+public struct Vec2F: Equatable, Hashable {
     public var x: Float
     public var y: Float
 
@@ -2628,31 +2348,15 @@ public struct Vec2F {
         self.x = x
         self.y = y
     }
+
+
+
+
 }
 
 #if compiler(>=6)
 extension Vec2F: Sendable {}
 #endif
-
-
-extension Vec2F: Equatable, Hashable {
-    public static func ==(lhs: Vec2F, rhs: Vec2F) -> Bool {
-        if lhs.x != rhs.x {
-            return false
-        }
-        if lhs.y != rhs.y {
-            return false
-        }
-        return true
-    }
-
-    public func hash(into hasher: inout Hasher) {
-        hasher.combine(x)
-        hasher.combine(y)
-    }
-}
-
-
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
@@ -2691,7 +2395,7 @@ public func FfiConverterTypeVec2F_lower(_ value: Vec2F) -> RustBuffer {
 /**
  * 3D vector in world space, meters.
  */
-public struct Vec3F {
+public struct Vec3F: Equatable, Hashable {
     public var x: Float
     public var y: Float
     public var z: Float
@@ -2703,35 +2407,15 @@ public struct Vec3F {
         self.y = y
         self.z = z
     }
+
+
+
+
 }
 
 #if compiler(>=6)
 extension Vec3F: Sendable {}
 #endif
-
-
-extension Vec3F: Equatable, Hashable {
-    public static func ==(lhs: Vec3F, rhs: Vec3F) -> Bool {
-        if lhs.x != rhs.x {
-            return false
-        }
-        if lhs.y != rhs.y {
-            return false
-        }
-        if lhs.z != rhs.z {
-            return false
-        }
-        return true
-    }
-
-    public func hash(into hasher: inout Hasher) {
-        hasher.combine(x)
-        hasher.combine(y)
-        hasher.combine(z)
-    }
-}
-
-
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
@@ -2772,15 +2456,29 @@ public func FfiConverterTypeVec3F_lower(_ value: Vec3F) -> RustBuffer {
 /**
  * Engine errors surfaced across the FFI.
  */
-public enum CoreError: Swift.Error {
+public
+enum CoreError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
 
 
 
     case CorruptData(String
     )
     case NoWallLocked
+
+
+
+
+
+
+    public var errorDescription: String? {
+        String(reflecting: self)
+    }
+
 }
 
+#if compiler(>=6)
+extension CoreError: Sendable {}
+#endif
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
@@ -2839,27 +2537,11 @@ public func FfiConverterTypeCoreError_lower(_ value: CoreError) -> RustBuffer {
 }
 
 
-extension CoreError: Equatable, Hashable {}
-
-
-
-
-extension CoreError: Foundation.LocalizedError {
-    public var errorDescription: String? {
-        String(reflecting: self)
-    }
-}
-
-
-
-
-// Note that we don't yet support `indirect` for enums.
-// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 /**
  * What a pin on the map represents.
  */
 
-public enum MapSpotKindF {
+public enum MapSpotKindF: Equatable, Hashable {
 
     /**
      * 公認ウォール — a spot where painting is permitted.
@@ -2873,8 +2555,12 @@ public enum MapSpotKindF {
      * Another user's work (served by the phase-2 works index).
      */
     case workOther
-}
 
+
+
+
+
+}
 
 #if compiler(>=6)
 extension MapSpotKindF: Sendable {}
@@ -2935,26 +2621,22 @@ public func FfiConverterTypeMapSpotKindF_lower(_ value: MapSpotKindF) -> RustBuf
 }
 
 
-extension MapSpotKindF: Equatable, Hashable {}
 
-
-
-
-
-
-// Note that we don't yet support `indirect` for enums.
-// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 /**
  * Spray mode: カジュアルライト (forgiving presets) or リアルライト
  * (physical spray simulation).
  */
 
-public enum SprayModeF {
+public enum SprayModeF: Equatable, Hashable {
 
     case casual
     case real
-}
 
+
+
+
+
+}
 
 #if compiler(>=6)
 extension SprayModeF: Sendable {}
@@ -3009,26 +2691,22 @@ public func FfiConverterTypeSprayModeF_lower(_ value: SprayModeF) -> RustBuffer 
 }
 
 
-extension SprayModeF: Equatable, Hashable {}
 
-
-
-
-
-
-// Note that we don't yet support `indirect` for enums.
-// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 /**
  * Camera tracking quality, mapped from ARKit's tracking state.
  */
 
-public enum TrackingStateF {
+public enum TrackingStateF: Equatable, Hashable {
 
     case normal
     case limited
     case notAvailable
-}
 
+
+
+
+
+}
 
 #if compiler(>=6)
 extension TrackingStateF: Sendable {}
@@ -3087,13 +2765,6 @@ public func FfiConverterTypeTrackingStateF_lift(_ buf: RustBuffer) throws -> Tra
 public func FfiConverterTypeTrackingStateF_lower(_ value: TrackingStateF) -> RustBuffer {
     return FfiConverterTypeTrackingStateF.lower(value)
 }
-
-
-extension TrackingStateF: Equatable, Hashable {}
-
-
-
-
 
 
 #if swift(>=5.8)
@@ -3493,9 +3164,10 @@ fileprivate struct FfiConverterSequenceTypeMapSpotKindF: FfiConverterRustBuffer 
  */
 public func haversineM(a: GeoPointF, b: GeoPointF) -> Double  {
     return try!  FfiConverterDouble.lift(try! rustCall() {
+        uniffiCallStatus in
     uniffi_graffix_core_fn_func_haversine_m(
         FfiConverterTypeGeoPointF_lower(a),
-        FfiConverterTypeGeoPointF_lower(b),$0
+        FfiConverterTypeGeoPointF_lower(b),uniffiCallStatus
     )
 })
 }
@@ -3508,11 +3180,12 @@ public func haversineM(a: GeoPointF, b: GeoPointF) -> Double  {
  */
 public func visibleMapSpots(spots: [MapSpotF], kinds: [MapSpotKindF], center: GeoPointF?, radiusM: Double?) -> [MapSpotF]  {
     return try!  FfiConverterSequenceTypeMapSpotF.lift(try! rustCall() {
+        uniffiCallStatus in
     uniffi_graffix_core_fn_func_visible_map_spots(
         FfiConverterSequenceTypeMapSpotF.lower(spots),
         FfiConverterSequenceTypeMapSpotKindF.lower(kinds),
         FfiConverterOptionTypeGeoPointF.lower(center),
-        FfiConverterOptionDouble.lower(radiusM),$0
+        FfiConverterOptionDouble.lower(radiusM),uniffiCallStatus
     )
 })
 }
@@ -3526,97 +3199,97 @@ private enum InitializationResult {
 // the code inside is only computed once.
 private let initializationResult: InitializationResult = {
     // Get the bindings contract version from our ComponentInterface
-    let bindings_contract_version = 29
+    let bindings_contract_version = 30
     // Get the scaffolding contract version by calling the into the dylib
     let scaffolding_contract_version = ffi_graffix_core_uniffi_contract_version()
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
-    if (uniffi_graffix_core_checksum_func_haversine_m() != 42622) {
+    if (uniffi_graffix_core_checksum_func_haversine_m() != 24528) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_graffix_core_checksum_func_visible_map_spots() != 38816) {
+    if (uniffi_graffix_core_checksum_func_visible_map_spots() != 14531) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_graffix_core_checksum_method_engine_can_redo() != 59272) {
+    if (uniffi_graffix_core_checksum_method_engine_can_redo() != 58118) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_graffix_core_checksum_method_engine_can_undo() != 28923) {
+    if (uniffi_graffix_core_checksum_method_engine_can_undo() != 21960) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_graffix_core_checksum_method_engine_canvas_snapshot() != 20056) {
+    if (uniffi_graffix_core_checksum_method_engine_canvas_snapshot() != 40186) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_graffix_core_checksum_method_engine_cap_index() != 60674) {
+    if (uniffi_graffix_core_checksum_method_engine_cap_index() != 37489) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_graffix_core_checksum_method_engine_caps() != 49144) {
+    if (uniffi_graffix_core_checksum_method_engine_caps() != 7884) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_graffix_core_checksum_method_engine_clear() != 30450) {
+    if (uniffi_graffix_core_checksum_method_engine_clear() != 26510) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_graffix_core_checksum_method_engine_color_index() != 39914) {
+    if (uniffi_graffix_core_checksum_method_engine_color_index() != 57949) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_graffix_core_checksum_method_engine_load_canvas() != 34440) {
+    if (uniffi_graffix_core_checksum_method_engine_load_canvas() != 1823) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_graffix_core_checksum_method_engine_lock_aimed() != 22671) {
+    if (uniffi_graffix_core_checksum_method_engine_lock_aimed() != 32156) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_graffix_core_checksum_method_engine_lock_wall() != 41258) {
+    if (uniffi_graffix_core_checksum_method_engine_lock_wall() != 27276) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_graffix_core_checksum_method_engine_mode() != 29066) {
+    if (uniffi_graffix_core_checksum_method_engine_mode() != 64059) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_graffix_core_checksum_method_engine_palette() != 21254) {
+    if (uniffi_graffix_core_checksum_method_engine_palette() != 57451) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_graffix_core_checksum_method_engine_preset_index() != 46583) {
+    if (uniffi_graffix_core_checksum_method_engine_preset_index() != 46881) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_graffix_core_checksum_method_engine_presets() != 55876) {
+    if (uniffi_graffix_core_checksum_method_engine_presets() != 45039) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_graffix_core_checksum_method_engine_redo() != 24834) {
+    if (uniffi_graffix_core_checksum_method_engine_redo() != 55529) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_graffix_core_checksum_method_engine_serialize_canvas() != 7646) {
+    if (uniffi_graffix_core_checksum_method_engine_serialize_canvas() != 47444) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_graffix_core_checksum_method_engine_set_cap_index() != 47269) {
+    if (uniffi_graffix_core_checksum_method_engine_set_cap_index() != 37458) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_graffix_core_checksum_method_engine_set_color_index() != 26654) {
+    if (uniffi_graffix_core_checksum_method_engine_set_color_index() != 24218) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_graffix_core_checksum_method_engine_set_mode() != 64314) {
+    if (uniffi_graffix_core_checksum_method_engine_set_mode() != 23867) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_graffix_core_checksum_method_engine_set_preset_index() != 37346) {
+    if (uniffi_graffix_core_checksum_method_engine_set_preset_index() != 58355) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_graffix_core_checksum_method_engine_shake() != 12424) {
+    if (uniffi_graffix_core_checksum_method_engine_shake() != 6919) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_graffix_core_checksum_method_engine_shake_level() != 61955) {
+    if (uniffi_graffix_core_checksum_method_engine_shake_level() != 43225) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_graffix_core_checksum_method_engine_tick() != 50875) {
+    if (uniffi_graffix_core_checksum_method_engine_tick() != 64076) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_graffix_core_checksum_method_engine_undo() != 5309) {
+    if (uniffi_graffix_core_checksum_method_engine_undo() != 41801) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_graffix_core_checksum_method_engine_unlock() != 14536) {
+    if (uniffi_graffix_core_checksum_method_engine_unlock() != 8010) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_graffix_core_checksum_method_engine_wall_count() != 32754) {
+    if (uniffi_graffix_core_checksum_method_engine_wall_count() != 16378) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_graffix_core_checksum_constructor_engine_new() != 64427) {
+    if (uniffi_graffix_core_checksum_constructor_engine_new() != 14120) {
         return InitializationResult.apiChecksumMismatch
     }
 
