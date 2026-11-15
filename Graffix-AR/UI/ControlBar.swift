@@ -44,10 +44,10 @@ struct ControlBar: View {
             Text("書き方")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            ForEach(viewModel.presets, id: \.index) { preset in
-                chip(title: preset.name,
-                     selected: viewModel.presetIndex == preset.index) {
-                    viewModel.presetIndex = preset.index
+            ForEach(viewModel.presets, id: \.self) { preset in
+                chip(title: preset.label,
+                     selected: viewModel.preset == preset) {
+                    viewModel.preset = preset
                 }
             }
             Spacer()
@@ -61,10 +61,10 @@ struct ControlBar: View {
             Text("ノズル")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            ForEach(viewModel.caps, id: \.index) { cap in
-                chip(title: cap.name,
-                     selected: viewModel.capIndex == cap.index) {
-                    viewModel.capIndex = cap.index
+            ForEach(viewModel.caps, id: \.self) { cap in
+                chip(title: cap.label,
+                     selected: viewModel.cap == cap) {
+                    viewModel.cap = cap
                 }
             }
             Spacer()
@@ -96,20 +96,20 @@ struct ControlBar: View {
     private var paletteRow: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 10) {
-                ForEach(Array(viewModel.palette.enumerated()), id: \.offset) { index, entry in
-                    let selected = viewModel.colorIndex == UInt8(index)
+                ForEach(viewModel.sprayColors, id: \.id) { entry in
+                    let selected = viewModel.color == entry.id
                     Button {
-                        viewModel.colorIndex = UInt8(index)
+                        viewModel.color = entry.id
                     } label: {
                         Circle()
-                            .fill(color(for: entry.color))
+                            .fill(color(for: entry.rgba))
                             .frame(width: 30, height: 30)
                             .overlay {
                                 Circle().stroke(.white, lineWidth: selected ? 3 : 0.5)
                             }
                             .scaleEffect(selected ? 1.15 : 1.0)
                     }
-                    .accessibilityLabel(entry.name)
+                    .accessibilityLabel(entry.id.label)
                 }
             }
             .padding(.horizontal, 6)

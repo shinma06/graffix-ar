@@ -9,7 +9,7 @@
 //! curve maps it to sRGB.
 
 use crate::canvas::{Dab, Drip};
-use crate::ffi::{ColorF, PaletteEntryF};
+use crate::ffi::ColorF;
 use crate::math::Vec2;
 use crate::raster::{linear_to_srgb, srgb_to_linear, PaintLayer, View};
 
@@ -41,11 +41,12 @@ pub enum Lighting {
     Night,
 }
 
-pub const LIGHTINGS: &[(Lighting, &str)] = &[
-    (Lighting::Day, "昼（晴れ）"),
-    (Lighting::Overcast, "昼（曇り）"),
-    (Lighting::Dusk, "夕方"),
-    (Lighting::Night, "夜（街灯）"),
+/// Supported lightings.
+pub const LIGHTINGS: &[Lighting] = &[
+    Lighting::Day,
+    Lighting::Overcast,
+    Lighting::Dusk,
+    Lighting::Night,
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -60,93 +61,56 @@ pub enum Material {
     Plaster,
 }
 
-pub const MATERIALS: &[(Material, &str)] = &[
-    (Material::Concrete, "コンクリート"),
-    (Material::Shutter, "シャッター"),
-    (Material::Brick, "レンガ"),
-    (Material::Plaster, "モルタル（白壁）"),
+/// Supported wall materials.
+pub const MATERIALS: &[Material] = &[
+    Material::Concrete,
+    Material::Shutter,
+    Material::Brick,
+    Material::Plaster,
 ];
 
-/// Wall recolor options. Index 0 keeps the material's own color.
-pub const WALL_COLORS: &[(&str, Option<ColorF>)] = &[
-    ("素材の色", None),
-    (
-        "ホワイト",
-        Some(ColorF {
-            r: 236,
-            g: 234,
-            b: 228,
-            a: 255,
-        }),
-    ),
-    (
-        "グレー",
-        Some(ColorF {
-            r: 128,
-            g: 128,
-            b: 126,
-            a: 255,
-        }),
-    ),
-    (
-        "ブラック",
-        Some(ColorF {
-            r: 38,
-            g: 38,
-            b: 40,
-            a: 255,
-        }),
-    ),
-    (
-        "ベージュ",
-        Some(ColorF {
-            r: 206,
-            g: 190,
-            b: 160,
-            a: 255,
-        }),
-    ),
-    (
-        "ネイビー",
-        Some(ColorF {
-            r: 38,
-            g: 52,
-            b: 88,
-            a: 255,
-        }),
-    ),
-    (
-        "ミント",
-        Some(ColorF {
-            r: 150,
-            g: 200,
-            b: 180,
-            a: 255,
-        }),
-    ),
+/// Wall recolors. "Keep the material's own color" is `Scene::wall_color ==
+/// None`, not an entry here.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WallColor {
+    White,
+    Gray,
+    Black,
+    Beige,
+    Navy,
+    Mint,
+}
+
+/// Supported wall recolors.
+pub const WALL_COLORS: &[WallColor] = &[
+    WallColor::White,
+    WallColor::Gray,
+    WallColor::Black,
+    WallColor::Beige,
+    WallColor::Navy,
+    WallColor::Mint,
 ];
 
-pub fn wall_color_entries() -> Vec<PaletteEntryF> {
-    WALL_COLORS
-        .iter()
-        .map(|(name, color)| PaletteEntryF {
-            name: (*name).to_string(),
-            color: color.unwrap_or(ColorF {
-                r: 150,
-                g: 148,
-                b: 143,
-                a: 255,
-            }),
-        })
-        .collect()
+impl WallColor {
+    pub fn rgba(self) -> ColorF {
+        let (r, g, b) = match self {
+            WallColor::White => (236, 234, 228),
+            WallColor::Gray => (128, 128, 126),
+            WallColor::Black => (38, 38, 40),
+            WallColor::Beige => (206, 190, 160),
+            WallColor::Navy => (38, 52, 88),
+            WallColor::Mint => (150, 200, 180),
+        };
+        ColorF { r, g, b, a: 255 }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Scene {
     pub lighting: Lighting,
     pub material: Material,
-    /// Index into `WALL_COLORS` (out of range = material color).
-    pub wall_color: u8,
+    /// Wall recolor; `None` keeps the material's own color.
+    pub wall_color: Option<WallColor>,
 }
 
 /// How the virtual camera frames the wall.
@@ -442,10 +406,9 @@ fn tone(c: f32) -> u8 {
 /// RGBA8, row-major from the top-left.
 pub fn compose(layer: &PaintLayer, scene: Scene, work: Option<Bounds>) -> Vec<u8> {
     let view = layer.view;
-    let base = lin(WALL_COLORS
-        .get(scene.wall_color as usize)
-        .and_then(|(_, c)| *c)
-        .unwrap_or(scene.material.natural()));
+    let base = lin(scene
+        .wall_color
+        .map_or(scene.material.natural(), WallColor::rgba));
     let mut out = Vec::with_capacity(view.width as usize * view.height as usize * 4);
     for y in 0..view.height {
         for x in 0..view.width {
@@ -492,7 +455,7 @@ mod tests {
         Scene {
             lighting,
             material,
-            wall_color: 0,
+            wall_color: None,
         }
     }
 
@@ -576,8 +539,8 @@ mod tests {
             material: Material::Plaster,
             wall_color,
         };
-        let white = compose(&layer, s(1), None);
-        let navy = compose(&layer, s(5), None);
+        let white = compose(&layer, s(Some(WallColor::White)), None);
+        let navy = compose(&layer, s(Some(WallColor::Navy)), None);
         let at = |img: &[u8], x: u32, y: u32| {
             let i = ((y * 40 + x) * 4) as usize;
             [img[i] as i32, img[i + 1] as i32, img[i + 2] as i32]
@@ -588,6 +551,31 @@ mod tests {
         // Opaque paint core: almost unchanged, and red.
         let (w, n) = (at(&white, 20, 20), at(&navy, 20, 20));
         assert!((w[0] - n[0]).abs() < 12 && w[0] > 150 && w[1] < 80);
+    }
+
+    #[test]
+    fn no_wall_color_keeps_the_material_color() {
+        let view = View::centered(Vec2::new(0.0, 0.0), 0.01, 16, 16);
+        let layer = PaintLayer::new(view);
+        let s = |wall_color| Scene {
+            lighting: Lighting::Overcast,
+            material: Material::Brick,
+            wall_color,
+        };
+        let natural = compose(&layer, s(None), None);
+        // Brick is red-brown on its own; every recolor replaces that.
+        let red_lead = |img: &[u8]| {
+            img.chunks(4)
+                .map(|p| p[0] as i32 - p[2] as i32)
+                .sum::<i32>()
+                / 256
+        };
+        assert!(red_lead(&natural) > 40);
+        for &c in WALL_COLORS {
+            let recolored = compose(&layer, s(Some(c)), None);
+            assert_ne!(recolored, natural, "{c:?}");
+            assert!(red_lead(&recolored) < red_lead(&natural), "{c:?}");
+        }
     }
 
     #[test]

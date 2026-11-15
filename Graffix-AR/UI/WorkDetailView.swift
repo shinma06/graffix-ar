@@ -85,13 +85,19 @@ private struct ScenePreviewSection: View {
     let work: SavedWork
     let info: SavedWorkInfoF
 
-    private static let options = sceneOptions()
+    private static let lightings = supportedSceneLightings()
+    private static let materials = supportedWallMaterials()
+    private static let wallColors = supportedWallColors()
+    private static let viewing = sceneViewingRange()
+    /// 「素材の色」スウォッチの見本色（シェル側の表示専用）。
+    private static let materialColorSwatch = ColorF(r: 150, g: 148, b: 143, a: 255)
     private static let imageSize = (width: UInt32(800), height: UInt32(600))
 
     @State private var lighting = SceneLightingF.day
     @State private var material = WallMaterialF.concrete
-    @State private var wallColorIndex: UInt8 = 0
-    @State private var distance = ScenePreviewSection.options.defaultViewingDistanceM
+    /// nil = 素材の色のまま。
+    @State private var wallColor: WallColorF?
+    @State private var distance = ScenePreviewSection.viewing.defaultDistanceM
     @State private var image: UIImage?
     @State private var viewWidthM: Float = 0
 
@@ -101,32 +107,32 @@ private struct ScenePreviewSection: View {
     }
 
     private var scene: SceneConfigF {
-        SceneConfigF(lighting: lighting, material: material, wallColorIndex: wallColorIndex)
+        SceneConfigF(lighting: lighting, material: material, wallColor: wallColor)
     }
 
     var body: some View {
-        let options = Self.options
+        let viewing = Self.viewing
         VStack(alignment: .leading, spacing: 14) {
             PreviewImage(image: image, label: "シーンプレビュー")
                 .accessibilityIdentifier("workDetail.scene.preview")
 
             Text(String(format: "%.1f m 離れて見たとき — 視野の幅 %.1f m（水平画角 %.0f°）／作品 %.2f × %.2f m",
-                        distance, viewWidthM, options.cameraHfovDeg, info.widthM, info.heightM))
+                        distance, viewWidthM, viewing.cameraHfovDeg, info.widthM, info.heightM))
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .accessibilityIdentifier("workDetail.scene.caption")
 
             Picker("照明", selection: $lighting) {
-                ForEach(options.lightings, id: \.self) { option in
-                    Text(option.name).tag(option.lighting)
+                ForEach(Self.lightings, id: \.self) { lighting in
+                    Text(lighting.label).tag(lighting)
                 }
             }
             .pickerStyle(.segmented)
             .accessibilityIdentifier("workDetail.scene.lighting")
 
             Picker("壁の素材", selection: $material) {
-                ForEach(options.materials, id: \.self) { option in
-                    Text(option.name).tag(option.material)
+                ForEach(Self.materials, id: \.self) { material in
+                    Text(material.label).tag(material)
                 }
             }
             .pickerStyle(.segmented)
@@ -136,8 +142,9 @@ private struct ScenePreviewSection: View {
                 Text("壁の色").font(.subheadline)
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 10) {
-                        ForEach(Array(options.wallColors.enumerated()), id: \.offset) { index, entry in
-                            wallColorSwatch(index: UInt8(index), entry: entry)
+                        wallColorSwatch(nil, label: "素材の色", color: Self.materialColorSwatch)
+                        ForEach(Self.wallColors, id: \.id) { entry in
+                            wallColorSwatch(entry.id, label: entry.id.label, color: entry.rgba)
                         }
                     }
                     .padding(.vertical, 2)
@@ -147,13 +154,13 @@ private struct ScenePreviewSection: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(String(format: "視距離 %.1f m", distance)).font(.subheadline)
                 Slider(value: $distance,
-                       in: options.minViewingDistanceM...options.maxViewingDistanceM,
+                       in: viewing.minDistanceM...viewing.maxDistanceM,
                        step: 0.5) {
                     Text("視距離")
                 } minimumValueLabel: {
-                    Text(String(format: "%.1f", options.minViewingDistanceM)).font(.caption2)
+                    Text(String(format: "%.1f", viewing.minDistanceM)).font(.caption2)
                 } maximumValueLabel: {
-                    Text(String(format: "%.0f m", options.maxViewingDistanceM)).font(.caption2)
+                    Text(String(format: "%.0f m", viewing.maxDistanceM)).font(.caption2)
                 }
                 .accessibilityValue(String(format: "%.1f メートル", distance))
                 .accessibilityIdentifier("workDetail.scene.distance")
@@ -175,16 +182,16 @@ private struct ScenePreviewSection: View {
         }
     }
 
-    private func wallColorSwatch(index: UInt8, entry: PaletteEntryF) -> some View {
-        let selected = index == wallColorIndex
+    private func wallColorSwatch(_ id: WallColorF?, label: String, color: ColorF) -> some View {
+        let selected = id == wallColor
         return Button {
-            wallColorIndex = index
+            wallColor = id
         } label: {
             VStack(spacing: 4) {
                 Circle()
-                    .fill(swiftUIColor(entry.color))
+                    .fill(swiftUIColor(color))
                     .overlay {
-                        if index == 0 {
+                        if id == nil {
                             Image(systemName: "square.grid.3x3.fill")
                                 .font(.caption2)
                                 .foregroundStyle(.white.opacity(0.8))
@@ -193,11 +200,11 @@ private struct ScenePreviewSection: View {
                     .overlay(Circle().stroke(selected ? Color.accentColor : .secondary.opacity(0.4),
                                              lineWidth: selected ? 3 : 1))
                     .frame(width: 34, height: 34)
-                Text(entry.name).font(.caption2).foregroundStyle(.primary)
+                Text(label).font(.caption2).foregroundStyle(.primary)
             }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(entry.name)
+        .accessibilityLabel(label)
         .accessibilityAddTraits(selected ? .isSelected : [])
         .accessibilityIdentifier("workDetail.scene.wallColor.\(index)")
     }
@@ -211,7 +218,7 @@ private struct TimelapsePlayerSection: View {
     let info: SavedWorkInfoF
 
     /// タイムラプスは作品が見やすい明るい白壁で再生する。
-    private static let scene = SceneConfigF(lighting: .overcast, material: .plaster, wallColorIndex: 0)
+    private static let scene = SceneConfigF(lighting: .overcast, material: .plaster, wallColor: nil)
     private static let imageSize = (width: UInt32(800), height: UInt32(600))
     private static let speeds: [Double] = [1, 2, 4, 8]
 
@@ -221,6 +228,14 @@ private struct TimelapsePlayerSection: View {
     @State private var image: UIImage?
     @State private var progress: TimelapseProgressF?
     @State private var exporter = TimelapseExportModel()
+    /// この再生画面専用のリプレイ（キャッシュは他の再生・書き出しと独立）。
+    @State private var replay: TimelapseReplay
+
+    init(work: SavedWork, info: SavedWorkInfoF) {
+        self.work = work
+        self.info = info
+        _replay = State(initialValue: work.replay())
+    }
 
     private var duration: Double { Double(info.timelapseDurationMs) }
 
@@ -312,9 +327,10 @@ private struct TimelapsePlayerSection: View {
 
     private func render(at ms: Double) async {
         let tMs = UInt32(max(0, min(ms, Double(UInt32.max))))
-        let work = work, scene = Self.scene, size = Self.imageSize
+        let replay = replay, scene = Self.scene, size = Self.imageSize
         let raster = await Task.detached(priority: .userInitiated) {
-            work.renderTimelapseFrame(tMs: tMs, scene: scene, width: size.width, height: size.height)
+            replay.renderFrame(tMs: tMs, scene: scene, framing: .fitWork,
+                               width: size.width, height: size.height)
         }.value
         image = UIImage(raster: raster)
         progress = work.timelapseProgress(tMs: tMs)

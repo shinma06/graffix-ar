@@ -5,7 +5,7 @@
 | 目的 | 渋谷の壁に、スプレー缶のようにスマートフォンを動かしてデジタルグラフィティを描く。違法な落書きを合法なデジタル表現に移す |
 | Repository | `shinma06/graffix-ar` |
 | コンセプト | [`docs/concept/`](concept/)（SHIBUYA+FUN PROJECT 資料と `VISION.md`）。読み取り専用の正本 |
-| 実装 | Rust コア `core/`（crate `graffix-core`、UniFFI で公開）+ Swift シェル `Graffix-AR/`（SwiftUI + RealityKit `ARView`）。計算はコア、シェルは入出力と描画のみ。詳細は [README](../README.md) |
+| 実装 | Rust コア `core/`（crate `graffix-core`、UniFFI で公開）+ Swift シェル `Graffix-AR/`（SwiftUI + RealityKit `ARView`）。計算と状態はコア、表示文言・並び・操作はシェル（コアは安定 ID・値・範囲のみ返す）。詳細は [README](../README.md) |
 | 対応 OS | iOS 27 のみ。AR は LiDAR 搭載の実機が必要（Simulator は ARKit 非対応） |
 | ビルド | `scripts/build-xcframework.sh`（XCFramework + UniFFI Swift バインディング）→ Xcode スキーム `Graffix-AR` |
 | テスト | `core/` の `cargo test`（単体・統合）と、作品詳細の UI テスト `Graffix-ARUITests`（XCUITest、iOS 27 Simulator でシードした保存作品を操作）。それ以外の Swift 側テストは無い |

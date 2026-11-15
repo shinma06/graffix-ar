@@ -431,7 +431,7 @@ mod tests {
         SceneConfigF {
             lighting: SceneLightingF::Overcast,
             material: WallMaterialF::Plaster,
-            wall_color_index: 0,
+            wall_color: None,
         }
     }
 
@@ -467,7 +467,9 @@ mod tests {
         // Frames match the player's frames at the same replay times.
         for i in [0, last_replay / 2, last_replay] {
             let t = Plan::new(plan.replay_duration_ms, &small(1.0)).time_of(i as u32);
-            let player = work().render_timelapse_frame(t, scene(), 96, 72);
+            let player = work()
+                .replay()
+                .render_frame(t, scene(), FramingF::FitWork, 96, 72);
             assert_eq!(frames[i].rgba, player.rgba, "frame {i}");
         }
     }
@@ -477,14 +479,19 @@ mod tests {
         let w = work();
         let job = w.clone().timelapse_export(small(2.0), scene());
         let n = job.plan().replay_frame_count;
+        let replay = w.clone().replay();
         let mut player = Vec::new();
         for i in 0..n {
             job.render_frame(i);
-            player.push(w.render_timelapse_frame(i * 20, scene(), 80, 60).rgba);
+            player.push(
+                replay
+                    .render_frame(i * 20, scene(), FramingF::FitWork, 80, 60)
+                    .rgba,
+            );
         }
-        let fresh = work();
+        let fresh = work().replay();
         for (i, rgba) in player.iter().enumerate() {
-            let want = fresh.render_timelapse_frame(i as u32 * 20, scene(), 80, 60);
+            let want = fresh.render_frame(i as u32 * 20, scene(), FramingF::FitWork, 80, 60);
             assert_eq!(*rgba, want.rgba);
         }
         // And re-rendering an earlier export frame (e.g. a retry) is exact.

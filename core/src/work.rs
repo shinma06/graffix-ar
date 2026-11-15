@@ -6,10 +6,10 @@ use std::sync::{Arc, Mutex};
 
 use crate::canvas::Stroke;
 use crate::export::{Plan, TimelapseExport, TimelapseExportPlanF, TimelapseExportRequestF};
-use crate::ffi::{CoreError, PaletteEntryF};
+use crate::ffi::{ColorF, CoreError};
 use crate::palette;
 use crate::raster::{Paint, PaintLayer, View};
-use crate::scene::{self, Bounds, Framing, Lighting, Material, Scene};
+use crate::scene::{self, Bounds, Framing, Lighting, Material, Scene, WallColor};
 use crate::serialize;
 use crate::timelapse::{MarkKind, Timeline};
 
@@ -32,13 +32,31 @@ pub enum WallMaterialF {
     Plaster,
 }
 
+/// Wall recolor (stable identifier; display labels live in the shell).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, uniffi::Enum)]
+pub enum WallColorF {
+    White,
+    Gray,
+    Black,
+    Beige,
+    Navy,
+    Mint,
+}
+
+/// A supported wall recolor and the paint color it applies.
+#[derive(Clone, Copy, Debug, PartialEq, uniffi::Record)]
+pub struct WallColorValueF {
+    pub id: WallColorF,
+    pub rgba: ColorF,
+}
+
 /// One simulated situation.
 #[derive(Clone, Copy, Debug, PartialEq, uniffi::Record)]
 pub struct SceneConfigF {
     pub lighting: SceneLightingF,
     pub material: WallMaterialF,
-    /// Index into `SceneOptionsF::wall_colors` (0 = the material's color).
-    pub wall_color_index: u8,
+    /// Wall recolor; `None` keeps the material's own color.
+    pub wall_color: Option<WallColorF>,
 }
 
 /// Virtual camera framing.
@@ -50,31 +68,12 @@ pub enum FramingF {
     ViewingDistance { meters: f32 },
 }
 
-#[derive(Clone, Debug, uniffi::Record)]
-pub struct LightingOptionF {
-    pub lighting: SceneLightingF,
-    /// Japanese display label.
-    pub name: String,
-}
-
-#[derive(Clone, Debug, uniffi::Record)]
-pub struct MaterialOptionF {
-    pub material: WallMaterialF,
-    /// Japanese display label.
-    pub name: String,
-}
-
-/// Everything the scene picker UI offers.
-#[derive(Clone, Debug, uniffi::Record)]
-pub struct SceneOptionsF {
-    pub lightings: Vec<LightingOptionF>,
-    pub materials: Vec<MaterialOptionF>,
-    /// Wall recolors; index 0 keeps the material color (its swatch is a
-    /// neutral stand-in).
-    pub wall_colors: Vec<PaletteEntryF>,
-    pub min_viewing_distance_m: f32,
-    pub max_viewing_distance_m: f32,
-    pub default_viewing_distance_m: f32,
+/// Supported head-on viewing distances and the camera they simulate.
+#[derive(Clone, Copy, Debug, PartialEq, uniffi::Record)]
+pub struct ViewingRangeF {
+    pub min_distance_m: f32,
+    pub max_distance_m: f32,
+    pub default_distance_m: f32,
     /// Horizontal field of view the distance framing simulates.
     pub camera_hfov_deg: f32,
 }
@@ -129,7 +128,33 @@ impl From<SceneConfigF> for Scene {
                 WallMaterialF::Brick => Material::Brick,
                 WallMaterialF::Plaster => Material::Plaster,
             },
-            wall_color: c.wall_color_index,
+            wall_color: c.wall_color.map(WallColor::from),
+        }
+    }
+}
+
+impl From<WallColorF> for WallColor {
+    fn from(c: WallColorF) -> Self {
+        match c {
+            WallColorF::White => WallColor::White,
+            WallColorF::Gray => WallColor::Gray,
+            WallColorF::Black => WallColor::Black,
+            WallColorF::Beige => WallColor::Beige,
+            WallColorF::Navy => WallColor::Navy,
+            WallColorF::Mint => WallColor::Mint,
+        }
+    }
+}
+
+impl From<WallColor> for WallColorF {
+    fn from(c: WallColor) -> Self {
+        match c {
+            WallColor::White => WallColorF::White,
+            WallColor::Gray => WallColorF::Gray,
+            WallColor::Black => WallColorF::Black,
+            WallColor::Beige => WallColorF::Beige,
+            WallColor::Navy => WallColorF::Navy,
+            WallColor::Mint => WallColorF::Mint,
         }
     }
 }
@@ -143,40 +168,54 @@ impl From<FramingF> for Framing {
     }
 }
 
-/// Lighting / material / wall color / distance choices for the scene UI.
+/// Supported scene lightings.
 #[uniffi::export]
-pub fn scene_options() -> SceneOptionsF {
-    let lighting_f = |l: Lighting| match l {
-        Lighting::Day => SceneLightingF::Day,
-        Lighting::Overcast => SceneLightingF::Overcast,
-        Lighting::Dusk => SceneLightingF::Dusk,
-        Lighting::Night => SceneLightingF::Night,
-    };
-    let material_f = |m: Material| match m {
-        Material::Concrete => WallMaterialF::Concrete,
-        Material::Shutter => WallMaterialF::Shutter,
-        Material::Brick => WallMaterialF::Brick,
-        Material::Plaster => WallMaterialF::Plaster,
-    };
-    SceneOptionsF {
-        lightings: scene::LIGHTINGS
-            .iter()
-            .map(|&(l, name)| LightingOptionF {
-                lighting: lighting_f(l),
-                name: name.to_string(),
-            })
-            .collect(),
-        materials: scene::MATERIALS
-            .iter()
-            .map(|&(m, name)| MaterialOptionF {
-                material: material_f(m),
-                name: name.to_string(),
-            })
-            .collect(),
-        wall_colors: scene::wall_color_entries(),
-        min_viewing_distance_m: scene::MIN_VIEW_DISTANCE_M,
-        max_viewing_distance_m: scene::MAX_VIEW_DISTANCE_M,
-        default_viewing_distance_m: scene::DEFAULT_VIEW_DISTANCE_M,
+pub fn supported_scene_lightings() -> Vec<SceneLightingF> {
+    scene::LIGHTINGS
+        .iter()
+        .map(|l| match l {
+            Lighting::Day => SceneLightingF::Day,
+            Lighting::Overcast => SceneLightingF::Overcast,
+            Lighting::Dusk => SceneLightingF::Dusk,
+            Lighting::Night => SceneLightingF::Night,
+        })
+        .collect()
+}
+
+/// Supported wall materials.
+#[uniffi::export]
+pub fn supported_wall_materials() -> Vec<WallMaterialF> {
+    scene::MATERIALS
+        .iter()
+        .map(|m| match m {
+            Material::Concrete => WallMaterialF::Concrete,
+            Material::Shutter => WallMaterialF::Shutter,
+            Material::Brick => WallMaterialF::Brick,
+            Material::Plaster => WallMaterialF::Plaster,
+        })
+        .collect()
+}
+
+/// Supported wall recolors and their colors. Keeping the material's own
+/// color is `SceneConfigF::wall_color == None`, not an entry here.
+#[uniffi::export]
+pub fn supported_wall_colors() -> Vec<WallColorValueF> {
+    scene::WALL_COLORS
+        .iter()
+        .map(|&c| WallColorValueF {
+            id: c.into(),
+            rgba: c.rgba(),
+        })
+        .collect()
+}
+
+/// Supported `FramingF::ViewingDistance` range.
+#[uniffi::export]
+pub fn scene_viewing_range() -> ViewingRangeF {
+    ViewingRangeF {
+        min_distance_m: scene::MIN_VIEW_DISTANCE_M,
+        max_distance_m: scene::MAX_VIEW_DISTANCE_M,
+        default_distance_m: scene::DEFAULT_VIEW_DISTANCE_M,
         camera_hfov_deg: scene::CAMERA_HFOV_DEG,
     }
 }
@@ -194,7 +233,6 @@ pub struct SavedWork {
     created: u64,
     timeline: Timeline,
     bounds: Option<Bounds>,
-    replay: Mutex<Option<ReplayCache>>,
 }
 
 impl SavedWork {
@@ -209,7 +247,6 @@ impl SavedWork {
             created,
             timeline,
             bounds,
-            replay: Mutex::new(None),
         }
     }
 
@@ -219,8 +256,8 @@ impl SavedWork {
         scene::view_for(self.bounds, framing, w, h)
     }
 
-    /// Timelapse framing: the whole work, so the picture does not move while
-    /// it grows.
+    /// Video export framing: the whole work, so the picture does not move
+    /// while it grows.
     pub(crate) fn fit_view(&self, width: u32, height: u32) -> View {
         self.view(Framing::FitWork, width, height)
     }
@@ -325,18 +362,13 @@ impl SavedWork {
         }
     }
 
-    /// The work as it stood `t_ms` into the replay, framed to fit the whole
-    /// work so the picture does not move while it grows.
-    pub fn render_timelapse_frame(
-        &self,
-        t_ms: u32,
-        scene: SceneConfigF,
-        width: u32,
-        height: u32,
-    ) -> RasterImageF {
-        let view = self.fit_view(width, height);
-        let mut cache = self.replay.lock().unwrap();
-        self.render_replay(&mut cache, view, t_ms, scene.into())
+    /// A timelapse replay with its own render cache: independent replays
+    /// (players, previews) do not disturb each other or video exports.
+    pub fn replay(self: Arc<Self>) -> Arc<TimelapseReplay> {
+        Arc::new(TimelapseReplay {
+            work: self,
+            cache: Mutex::new(None),
+        })
     }
 
     /// What exporting the timelapse as a video would produce (frame count,
@@ -353,6 +385,35 @@ impl SavedWork {
     ) -> Arc<TimelapseExport> {
         let plan = Plan::new(self.timeline.duration_ms, &request);
         Arc::new(TimelapseExport::new(self, plan, scene.into()))
+    }
+}
+
+/// One timelapse replay of a `SavedWork`. Rendering forward in time (same
+/// framing and size) only stamps the newly revealed marks; anything else
+/// re-renders from scratch.
+#[derive(uniffi::Object)]
+pub struct TimelapseReplay {
+    work: Arc<SavedWork>,
+    cache: Mutex<Option<ReplayCache>>,
+}
+
+#[uniffi::export]
+impl TimelapseReplay {
+    /// The work as it stood `t_ms` into the replay. A framing that does not
+    /// change over the replay (e.g. `FitWork`) keeps the picture still while
+    /// it grows.
+    pub fn render_frame(
+        &self,
+        t_ms: u32,
+        scene: SceneConfigF,
+        framing: FramingF,
+        width: u32,
+        height: u32,
+    ) -> RasterImageF {
+        let view = self.work.view(framing.into(), width, height);
+        let mut cache = self.cache.lock().unwrap();
+        self.work
+            .render_replay(&mut cache, view, t_ms, scene.into())
     }
 }
 
@@ -398,7 +459,7 @@ mod tests {
         SceneConfigF {
             lighting: SceneLightingF::Day,
             material: WallMaterialF::Concrete,
-            wall_color_index: 0,
+            wall_color: None,
         }
     }
 
@@ -425,13 +486,49 @@ mod tests {
     }
 
     #[test]
-    fn options_cover_every_variant() {
-        let o = scene_options();
-        assert_eq!(o.lightings.len(), 4);
-        assert_eq!(o.materials.len(), 4);
-        assert_eq!(o.wall_colors.len(), scene::WALL_COLORS.len());
-        assert!(o.min_viewing_distance_m < o.default_viewing_distance_m);
-        assert!(o.default_viewing_distance_m < o.max_viewing_distance_m);
+    fn supported_values_cover_every_variant() {
+        use SceneLightingF::*;
+        use WallMaterialF::*;
+        assert_eq!(supported_scene_lightings(), [Day, Overcast, Dusk, Night]);
+        assert_eq!(
+            supported_wall_materials(),
+            [Concrete, Shutter, Brick, Plaster]
+        );
+        let colors = supported_wall_colors();
+        assert_eq!(colors.len(), 6);
+        for (c, &internal) in colors.iter().zip(scene::WALL_COLORS) {
+            assert_eq!(WallColor::from(c.id), internal);
+            assert_eq!(WallColorF::from(internal), c.id);
+            assert_eq!(c.rgba, internal.rgba());
+        }
+        assert_eq!(
+            colors[0].rgba,
+            ColorF {
+                r: 236,
+                g: 234,
+                b: 228,
+                a: 255
+            }
+        );
+        let r = scene_viewing_range();
+        assert_eq!(
+            (r.min_distance_m, r.default_distance_m, r.max_distance_m),
+            (0.5, 3.0, 30.0)
+        );
+        assert_eq!(r.camera_hfov_deg, 60.0);
+    }
+
+    #[test]
+    fn wall_color_none_keeps_the_material_color() {
+        let w = work();
+        let brick = |wall_color| SceneConfigF {
+            lighting: SceneLightingF::Overcast,
+            material: WallMaterialF::Brick,
+            wall_color,
+        };
+        let natural = w.render_scene(brick(None), FramingF::FitWork, 64, 48);
+        let navy = w.render_scene(brick(Some(WallColorF::Navy)), FramingF::FitWork, 64, 48);
+        assert_ne!(natural.rgba, navy.rgba);
     }
 
     #[test]
@@ -478,26 +575,79 @@ mod tests {
         let w = work();
         let d = w.info().timelapse_duration_ms;
         let full = w.render_scene(day_concrete(), FramingF::FitWork, 96, 72);
+        let player = w.clone().replay();
+        let frame =
+            |r: &TimelapseReplay, t| r.render_frame(t, day_concrete(), FramingF::FitWork, 96, 72);
         // Play forward in steps (incremental path), then compare.
         for t in (0..=d).step_by(37) {
-            w.render_timelapse_frame(t, day_concrete(), 96, 72);
+            frame(&player, t);
         }
-        let last = w.render_timelapse_frame(d, day_concrete(), 96, 72);
+        let last = frame(&player, d);
         assert_eq!(last.rgba, full.rgba);
         assert_eq!(w.timelapse_progress(d).fraction, 1.0);
 
         // Scrubbing back re-renders from scratch, matching a fresh render.
-        let mid = w.render_timelapse_frame(d / 3, day_concrete(), 96, 72);
-        let fresh = work().render_timelapse_frame(d / 3, day_concrete(), 96, 72);
+        let mid = frame(&player, d / 3);
+        let fresh = frame(&work().replay(), d / 3);
         assert_eq!(mid.rgba, fresh.rgba);
         assert_ne!(mid.rgba, full.rgba);
 
-        let bare_wall = SavedWork::new(serialize::encode(&Canvas::new(), 0)).unwrap();
-        let mut layer = PaintLayer::new(w.view(Framing::FitWork, 96, 72));
-        bare_wall.stamp(&mut layer, 0..0);
         let first = w.timelapse_progress(0);
         assert_eq!(first.visible_dabs, 1);
         assert_eq!(first.active_stroke, Some(0));
+    }
+
+    #[test]
+    fn replays_are_independent() {
+        let w = work();
+        let d = w.info().timelapse_duration_ms;
+        let (a, b) = (w.clone().replay(), w.clone().replay());
+        let at =
+            |r: &TimelapseReplay, t| r.render_frame(t, day_concrete(), FramingF::FitWork, 80, 60);
+        // Interleave two players at different times: each must match a
+        // replay that only ever rendered its own sequence.
+        let (solo_a, solo_b) = (w.clone().replay(), w.clone().replay());
+        for k in 0..=8 {
+            let ta = d * k / 8;
+            let tb = d - ta;
+            assert_eq!(at(&a, ta).rgba, at(&solo_a, ta).rgba);
+            assert_eq!(at(&b, tb).rgba, at(&solo_b, tb).rgba);
+        }
+    }
+
+    #[test]
+    fn replay_honors_the_framing() {
+        let w = work();
+        let d = w.info().timelapse_duration_ms;
+        let r = w.clone().replay();
+        for f in [
+            FramingF::FitWork,
+            FramingF::ViewingDistance { meters: 2.0 },
+            FramingF::ViewingDistance { meters: 8.0 },
+        ] {
+            let last = r.render_frame(d, day_concrete(), f, 120, 90);
+            let full = w.render_scene(day_concrete(), f, 120, 90);
+            assert_eq!(last.rgba, full.rgba, "{f:?}");
+            assert_eq!(
+                (last.view_width_m, last.view_height_m),
+                (full.view_width_m, full.view_height_m)
+            );
+        }
+        let near = r.render_frame(
+            d,
+            day_concrete(),
+            FramingF::ViewingDistance { meters: 2.0 },
+            120,
+            90,
+        );
+        let far = r.render_frame(
+            d,
+            day_concrete(),
+            FramingF::ViewingDistance { meters: 8.0 },
+            120,
+            90,
+        );
+        assert!(far.view_width_m > near.view_width_m);
     }
 
     #[test]

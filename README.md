@@ -7,6 +7,7 @@
 
 コンセプト: [`docs/concept/SHIBUYA-FUN-PROJECT.pdf`](docs/concept/SHIBUYA-FUN-PROJECT.pdf)、
 追加ビジョン（フェーズ 2/3）: [`docs/concept/VISION.md`](docs/concept/VISION.md)。
+フェーズ 2 設計メモ（提案・オーナー判断待ち）: [`docs/design/phase2.md`](docs/design/phase2.md)。
 
 **フェーズ 1（本実装）** — ローカルの描画体験:
 壁の認識・ロック → 距離連動スプレー描画 → 撮影して SNS 共有。
@@ -33,6 +34,9 @@
 `SavedWork`（`core/src/work.rs` → `raster.rs` / `scene.rs` /
 `timelapse.rs`）が計算して RGBA 画像を返し、シェル
 （`Graffix-AR/UI/WorkDetailView.swift`）は操作 UI と表示だけを行う。
+タイムラプスの再生は `SavedWork.replay()` が返す `TimelapseReplay`
+（再生画面ごとに独立したキャッシュを持ち、`FramingF` を呼び出し側が
+渡す）で描く。
 動画書き出しの計画（各フレームが示す再生時刻・フレーム数・長さの上限と
 自動加速・完成画の静止・偶数に丸めた映像サイズ・ビットレート）もコア
 （`core/src/export.rs` の `TimelapseExport`）が決めてフレームを描き、
@@ -64,7 +68,13 @@
 ```
 
 - **`core/`** — Rust クレート `graffix-core`。`Engine` オブジェクトを
-  UniFFI で Swift に公開。ホストで `cargo test` 可能。
+  UniFFI で Swift に公開。ホストで `cargo test` 可能。UI に依存しない:
+  表示文言・並び順・グループ分けは返さず、安定 ID（`BrushPresetF` /
+  `SprayCapF` / `SprayColorF` / `SceneLightingF` / `WallMaterialF` /
+  `WallColorF`）と値・範囲（`supported_*()`・`scene_viewing_range()`）
+  だけを返す。壁色の「素材の色のまま」は `SceneConfigF.wall_color = None`。
+- **表示文言** — ID → 日本語ラベルの対応はシェル
+  （`Graffix-AR/UI/CoreLabels.swift`）が持つ。
 - **`Graffix-AR/`** — iOS アプリ（iOS 27.0+, Swift 6）。ARKit の
   `ARSession`（垂直面検出 + LiDAR scene depth）から入力を取り、
   コアが返すダブ列を壁平面テクスチャとして描画。
@@ -273,7 +283,9 @@ open Graffix-AR.xcodeproj
   進捗の単調性、ラスタライザ（楕円・回転・勾配・ドリップ・サブ
   ピクセル）、シーン（視距離→視野幅、昼夜の明暗・街灯の光だまり、
   夕方の斜光、壁色が塗料を変えないこと、シャッターのリブ・
-  レンガ目地）、タイムラプス最終フレーム＝完成画像・巻き戻しの一致。
+  レンガ目地）、タイムラプス最終フレーム＝完成画像・巻き戻しの一致、
+  複数の `TimelapseReplay` が互いに干渉しないこと・`FramingF` の反映、
+  スプレー色 ID ↔ 保存パレット番号の対応が不変なこと。
 - `cargo check --target aarch64-apple-ios` / `aarch64-apple-ios-sim`:
   コアは iOS 向けにコンパイル可能（リンクは未実行）。
 - UniFFI Swift バインディング生成（ホストビルドのライブラリから）。
