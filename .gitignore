@@ -63,10 +63,9 @@ fastlane/test_output
 directory_structure.txt
 
 
-# Agent harness: local state, credentials, and generated artifacts
+# Local agent/client state, credentials, and generated artifacts
 __pycache__/
 *.pyc
-.harness-local/
 .env
 .env.*
 !.env.example

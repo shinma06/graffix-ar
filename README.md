@@ -302,15 +302,12 @@ CI の `dtolnay/rust-toolchain@stable` が毎回最新安定版を入れるた�
   の UV 向き — キャンバス/ハイライトが上下反転する場合は
   `WallCanvasRenderer` の基底マッピングを反転させる。
 
-## ハーネスとの不整合（既知）
+## 開発する
 
-- `scripts/workflow/ios_build.py` は旧スキーム名 `Mock Up` を
-  ハードコードしている → 新スキームは `Graffix-AR`。
-- 旧ソースツリー（`Features/`, `Common/`, `Resources/Localization`）は
-  全て削除済み。同期フォルダ group 方式の `project.pbxproj` に刷新
-  （objectVersion 77, Xcode 16+）。
+開発は Devin が担当します。進め方は [AGENTS.md](AGENTS.md)、プロジェクトの事実は
+[docs/project.md](docs/project.md)、旧運用の保管と戻し方は
+[docs/legacy-ops](docs/legacy-ops/README.md) を参照してください。必須の確認は
+`.github/workflows/ci.yml` の 2 ジョブ（内容は上記「動作確認済み / 未確認」）です。
 
-## 作業管理
-
-リポジトリの共通規約は `AGENTS.md`。本再構築は依頼者の明示指示により
-ワーキングツリー上で直接実施（Issue/PR フロー対象外）。
+`project.pbxproj` は同期フォルダ group 方式（objectVersion 77）で、
+`Graffix-AR/` 配下のファイルは自動でアプリターゲットに含まれます。
