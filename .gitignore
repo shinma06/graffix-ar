@@ -63,10 +63,9 @@ fastlane/test_output
 directory_structure.txt
 
 
-# Agent harness: local state, credentials, and generated artifacts
+# Local agent/client state, credentials, and generated artifacts
 __pycache__/
 *.pyc
-.harness-local/
 .env
 .env.*
 !.env.example
@@ -75,3 +74,8 @@ __pycache__/
 .mcp.json
 .cursor/mcp.json
 *.xcresult/
+
+# Rust core build outputs
+core/target/
+core/build/
+core/out/
