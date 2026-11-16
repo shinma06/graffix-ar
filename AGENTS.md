@@ -6,9 +6,8 @@ iOS app (Shibuya Graffix AR): move the phone like a spray can to paint digital g
 
 A Devin parent session delegates one task per child session, reviews the result and integrates it. Entire records the sessions.
 
-- One task → one child session → one branch `devin/<slug>` from `rebuild/concept-rust-core` → one PR into `rebuild/concept-rust-core`. Never push to `rebuild/concept-rust-core`, `main`, `master` or `develop`, never force-push, and do not merge: the parent integrates.
+- One task → one child session → one branch `devin/<slug>` from `main` → one PR into `main`. Children never push to `main`, `master` or `develop`, never force-push and never merge: the parent session reviews and merges into `main` after both required checks are green.
 - A PR is ready when both `.github/workflows/ci.yml` jobs, `Rust core (Linux)` and `iOS app (Xcode)`, are green on its head. Fix real failures; never weaken a check.
-- `rebuild/concept-rust-core` reaches `main` through PR #7, which the owner merges.
 - Stay inside the files your task names; if you must touch others, keep it minimal and say so in the PR.
 - Product and design decisions the task and the repository do not settle go to the owner: stop and ask with the options instead of guessing.
 - Report what CI verified and what it did not (on-device AR, LiDAR, haptics, UI behaviour).

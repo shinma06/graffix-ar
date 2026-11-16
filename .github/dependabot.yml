@@ -2,8 +2,7 @@
 # on the latest stable release.
 #
 # Dependabot reads this file only from the default branch (main) and opens PRs
-# against main (no target-branch). It takes effect once the rebuild lands on
-# main.
+# against main (no target-branch).
 #
 # Rust toolchain: CI installs it with dtolnay/rust-toolchain@stable, which
 # resolves to the newest stable rustc on every run, and the repo has no
