@@ -217,13 +217,34 @@ pub struct CanvasFrameF {
     pub normal: Vec3F,
 }
 
-/// Renderable canvas snapshot. The shell rasterizes `dabs` into a texture
-/// placed at `frame`.
+/// Raw canvas contents (strokes with resolved colors). The live wall texture
+/// comes from `Engine::render_live_canvas` instead.
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct CanvasSnapshotF {
     pub frame: Option<CanvasFrameF>,
     pub strokes: Vec<StrokeF>,
     pub dab_count: u32,
+}
+
+/// The live wall texture from `Engine::render_live_canvas`: transparent where
+/// unpainted, laid on the wall plane at `frame`.
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct LiveCanvasImageF {
+    /// Frozen canvas frame the image lies in.
+    pub frame: CanvasFrameF,
+    pub width: u32,
+    pub height: u32,
+    /// Premultiplied-alpha sRGB RGBA8, row-major from the top-left. Rows run
+    /// from the +v (top) edge down, columns along +u.
+    pub rgba: Vec<u8>,
+    /// Wall-local rectangle the image covers, meters: left edge, bottom edge
+    /// and size.
+    pub min_u: f32,
+    pub min_v: f32,
+    pub width_m: f32,
+    pub height_m: f32,
+    /// Image density chosen by the core.
+    pub pixels_per_meter: f32,
 }
 
 /// A supported spray color and the paint color it lays down.

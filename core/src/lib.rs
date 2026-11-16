@@ -2,8 +2,9 @@
 //!
 //! The shell (SwiftUI + RealityKit) feeds ARKit plane/camera/depth input via
 //! `Engine::tick` and renders what the core returns. All spray math, wall
-//! selection, distance estimation, canvas serialization, and the saved-work scene
-//! simulation / timelapse renderer live here.
+//! selection, distance estimation, canvas serialization, the live AR wall
+//! texture rasterizer and the saved-work scene simulation / timelapse renderer
+//! live here.
 
 uniffi::setup_scaffolding!();
 
@@ -13,6 +14,7 @@ pub mod engine;
 pub mod export;
 pub mod ffi;
 pub mod geo;
+mod live;
 mod math;
 mod palette;
 mod raster;

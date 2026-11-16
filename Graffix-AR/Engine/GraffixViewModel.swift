@@ -130,7 +130,7 @@ final class GraffixViewModel {
     }
 
     private func renderCanvas() {
-        renderer?.update(canvas: engine.canvasSnapshot())
+        renderer?.requestCanvasRender(engine: engine)
     }
 
     // MARK: - User actions

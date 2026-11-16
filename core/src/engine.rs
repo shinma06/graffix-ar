@@ -5,9 +5,11 @@ use std::sync::{Arc, Mutex};
 use crate::canvas::{dab_f, drip_f, Canvas, Stroke, StrokeTiming};
 use crate::distance::{DistanceFilter, Tracking};
 use crate::ffi::{
-    BrushPresetF, CanvasFrameF, CanvasSnapshotF, CoreError, FrameInputF, FrameOutputF, SprayCapF,
-    SprayColorF, SprayColorValueF, SprayModeF, SprayStateF, TrackingStateF, Vec2F,
+    BrushPresetF, CanvasFrameF, CanvasSnapshotF, CoreError, FrameInputF, FrameOutputF,
+    LiveCanvasImageF, SprayCapF, SprayColorF, SprayColorValueF, SprayModeF, SprayStateF,
+    TrackingStateF, Vec2F,
 };
+use crate::live::LiveRaster;
 use crate::math::{PlaneFrame, Ray, Vec2, Vec3};
 use crate::palette;
 use crate::serialize;
@@ -87,6 +89,8 @@ struct EngineState {
     /// Canvas time, ms: accumulated (clamped) frame time. Stamps every
     /// mark so a saved work can be replayed as a timelapse.
     clock_ms: f64,
+    /// Live wall texture, updated by `render_live_canvas`.
+    live: LiveRaster,
 }
 
 impl EngineState {
@@ -133,6 +137,7 @@ impl Engine {
                 last_camera: Vec3::ZERO,
                 seen_revision: 0,
                 clock_ms: 0.0,
+                live: LiveRaster::new(),
             }),
         })
     }
@@ -405,7 +410,39 @@ impl Engine {
         self.state.lock().unwrap().registry.len() as u32
     }
 
-    /// Full canvas snapshot for rendering. Marks the canvas clean.
+    /// Wall texture for the AR view: stamps only paint added since the last
+    /// call (full re-render after undo/redo/clear/load or when paint outgrows
+    /// the image). `None` while there is no canvas frame or no paint. Marks
+    /// the canvas clean (`FrameOutputF::canvas_dirty`).
+    pub fn render_live_canvas(&self) -> Option<LiveCanvasImageF> {
+        let mut guard = self.state.lock().unwrap();
+        let s = &mut *guard;
+        s.seen_revision = s.canvas.revision();
+        let frame = s.canvas.frame()?;
+        let mut strokes: Vec<&Stroke> = s.canvas.strokes().iter().collect();
+        strokes.extend(s.active_stroke.as_ref());
+        s.live.update(&strokes, s.canvas.rewrites());
+        let (view, rgba) = s.live.image()?;
+        Some(LiveCanvasImageF {
+            frame: CanvasFrameF {
+                origin: frame.origin.into(),
+                axis_u: frame.u.into(),
+                axis_v: frame.v.into(),
+                normal: frame.normal.into(),
+            },
+            width: view.width,
+            height: view.height,
+            rgba: rgba.to_vec(),
+            min_u: view.left_u,
+            min_v: view.top_v - view.height_m(),
+            width_m: view.width_m(),
+            height_m: view.height_m(),
+            pixels_per_meter: 1.0 / view.m_per_px,
+        })
+    }
+
+    /// Raw canvas contents (strokes, including the in-flight one). Marks the
+    /// canvas clean.
     pub fn canvas_snapshot(&self) -> CanvasSnapshotF {
         let mut s = self.state.lock().unwrap();
         // Include any in-flight stroke so painting appears live.

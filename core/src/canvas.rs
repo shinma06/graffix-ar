@@ -108,6 +108,10 @@ pub struct Canvas {
     redo_stack: Vec<Edit>,
     /// Monotonic counter; the shell treats growth as "needs re-render".
     revision: u64,
+    /// Bumped whenever existing paint changes (undo, redo, clear, load) as
+    /// opposed to new paint being appended; renderers that only stamp new
+    /// marks start over when it moves.
+    rewrites: u64,
 }
 
 impl Canvas {
@@ -159,6 +163,7 @@ impl Canvas {
         let strokes = std::mem::take(&mut self.strokes);
         self.undo_stack.push(Edit::Cleared { strokes });
         self.redo_stack.clear();
+        self.rewrites += 1;
         self.bump();
     }
 
@@ -189,6 +194,7 @@ impl Canvas {
                 });
             }
         }
+        self.rewrites += 1;
         self.bump();
         true
     }
@@ -208,12 +214,17 @@ impl Canvas {
                 let _ = strokes;
             }
         }
+        self.rewrites += 1;
         self.bump();
         true
     }
 
     pub fn revision(&self) -> u64 {
         self.revision
+    }
+
+    pub fn rewrites(&self) -> u64 {
+        self.rewrites
     }
 
     pub(crate) fn bump(&mut self) {
@@ -226,6 +237,7 @@ impl Canvas {
         self.strokes = strokes;
         self.undo_stack.clear();
         self.redo_stack.clear();
+        self.rewrites += 1;
         self.bump();
     }
 
