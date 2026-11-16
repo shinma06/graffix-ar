@@ -1,10 +1,11 @@
-//! Software rasterizer for saved works (scene preview and timelapse).
+//! Software rasterizer shared by the live AR wall texture (`live`), saved-work
+//! scene preview and timelapse (`work`, `scene`, `export`).
 //!
-//! Mirrors the shell's live AR look (`WallCanvasRenderer`): each dab is an
-//! ellipse filled with a radial gradient whose dense core is offset toward
-//! the near side, and each drip is a capsule with a top-down fade. Paint
-//! accumulates source-over into a premultiplied, linear-light layer that
-//! `scene` later composites onto a wall.
+//! Each dab is an ellipse filled with a radial gradient whose dense core is
+//! offset toward the near side, and each drip is a capsule with a top-down
+//! fade. Paint accumulates source-over into a premultiplied, linear-light
+//! layer that `live` encodes as a transparent texture and `scene` composites
+//! onto a simulated wall.
 
 use crate::canvas::{Dab, Drip};
 use crate::ffi::ColorF;
@@ -53,7 +54,7 @@ impl View {
 
     /// Pixel rectangle (x0..x1, y0..y1, exclusive ends) covering a wall
     /// rectangle, clipped to the image. `None` when fully outside.
-    fn pixel_box(
+    pub(crate) fn pixel_box(
         &self,
         min_u: f32,
         max_u: f32,
@@ -74,6 +75,31 @@ impl View {
             fy0.max(0.0) as u32,
             fy1.min(h) as u32,
         ))
+    }
+
+    /// Pixels `PaintLayer::stamp_dab` may touch.
+    pub(crate) fn dab_box(&self, dab: &Dab) -> Option<(u32, u32, u32, u32)> {
+        let min_r = 1.25 * self.m_per_px;
+        let r = dab.radius_major.max(min_r).max(dab.radius_minor.max(min_r));
+        self.pixel_box(dab.uv.x - r, dab.uv.x + r, dab.uv.y - r, dab.uv.y + r)
+    }
+
+    /// A drip's capsule as (center, half size), widened to at least a pixel.
+    fn drip_capsule(&self, drip: &Drip) -> (Vec2, Vec2) {
+        let w = drip.width.max(self.m_per_px);
+        let half = Vec2::new(w * 0.5, drip.len * 0.5);
+        (Vec2::new(drip.uv.x, drip.uv.y - half.y), half)
+    }
+
+    /// Pixels `PaintLayer::stamp_drip` may touch.
+    pub(crate) fn drip_box(&self, drip: &Drip) -> Option<(u32, u32, u32, u32)> {
+        let (center, half) = self.drip_capsule(drip);
+        self.pixel_box(
+            center.x - half.x,
+            center.x + half.x,
+            center.y - half.y,
+            center.y + half.y,
+        )
     }
 }
 
@@ -165,10 +191,7 @@ impl PaintLayer {
         let gx = cos_t * dab.gradient.x + sin_t * dab.gradient.y;
         let gy = -sin_t * dab.gradient.x + cos_t * dab.gradient.y;
         let s = Vec2::new(gx * 0.4, gy * 0.4);
-        let r = a.max(b);
-        let Some((x0, x1, y0, y1)) =
-            v.pixel_box(dab.uv.x - r, dab.uv.x + r, dab.uv.y - r, dab.uv.y + r)
-        else {
+        let Some((x0, x1, y0, y1)) = v.dab_box(dab) else {
             return;
         };
         for y in y0..y1 {
@@ -193,17 +216,10 @@ impl PaintLayer {
         if drip.len <= 0.0 || drip.width <= 0.0 || drip.opacity <= 0.0 {
             return;
         }
-        let w = drip.width.max(v.m_per_px);
-        let alpha_scale = drip.width / w;
-        let half = Vec2::new(w * 0.5, drip.len * 0.5);
-        let center = Vec2::new(drip.uv.x, drip.uv.y - half.y);
+        let (center, half) = v.drip_capsule(drip);
+        let alpha_scale = drip.width / (half.x * 2.0);
         let radius = half.x.min(half.y);
-        let Some((x0, x1, y0, y1)) = v.pixel_box(
-            center.x - half.x,
-            center.x + half.x,
-            center.y - half.y,
-            center.y + half.y,
-        ) else {
+        let Some((x0, x1, y0, y1)) = v.drip_box(drip) else {
             return;
         };
         for y in y0..y1 {

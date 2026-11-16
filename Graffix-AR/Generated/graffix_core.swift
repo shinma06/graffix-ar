@@ -640,7 +640,8 @@ public protocol EngineProtocol: AnyObject, Sendable {
     func canUndo()  -> Bool
     
     /**
-     * Full canvas snapshot for rendering. Marks the canvas clean.
+     * Raw canvas contents (strokes, including the in-flight one). Marks the
+     * canvas clean.
      */
     func canvasSnapshot()  -> CanvasSnapshotF
     
@@ -670,6 +671,14 @@ public protocol EngineProtocol: AnyObject, Sendable {
     func preset()  -> BrushPresetF
     
     func redo()  -> Bool
+    
+    /**
+     * Wall texture for the AR view: stamps only paint added since the last
+     * call (full re-render after undo/redo/clear/load or when paint outgrows
+     * the image). `None` while there is no canvas frame or no paint. Marks
+     * the canvas clean (`FrameOutputF::canvas_dirty`).
+     */
+    func renderLiveCanvas()  -> LiveCanvasImageF?
     
     /**
      * Serialize the canvas (GFXC v3, with stroke timing). Upload-ready for
@@ -804,7 +813,8 @@ open func canUndo() -> Bool  {
 }
     
     /**
-     * Full canvas snapshot for rendering. Marks the canvas clean.
+     * Raw canvas contents (strokes, including the in-flight one). Marks the
+     * canvas clean.
      */
 open func canvasSnapshot() -> CanvasSnapshotF  {
     return try!  FfiConverterTypeCanvasSnapshotF_lift(try! rustCall() {
@@ -900,6 +910,21 @@ open func redo() -> Bool  {
     return try!  FfiConverterBool.lift(try! rustCall() {
         uniffiCallStatus in
     uniffi_graffix_core_fn_method_engine_redo(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Wall texture for the AR view: stamps only paint added since the last
+     * call (full re-render after undo/redo/clear/load or when paint outgrows
+     * the image). `None` while there is no canvas frame or no paint. Marks
+     * the canvas clean (`FrameOutputF::canvas_dirty`).
+     */
+open func renderLiveCanvas() -> LiveCanvasImageF?  {
+    return try!  FfiConverterOptionTypeLiveCanvasImageF.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_graffix_core_fn_method_engine_render_live_canvas(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -1658,8 +1683,8 @@ public func FfiConverterTypeCanvasFrameF_lower(_ value: CanvasFrameF) -> RustBuf
 
 
 /**
- * Renderable canvas snapshot. The shell rasterizes `dabs` into a texture
- * placed at `frame`.
+ * Raw canvas contents (strokes with resolved colors). The live wall texture
+ * comes from `Engine::render_live_canvas` instead.
  */
 public struct CanvasSnapshotF: Equatable, Hashable {
     public var frame: CanvasFrameF?
@@ -2331,6 +2356,120 @@ public func FfiConverterTypeGeoPointF_lift(_ buf: RustBuffer) throws -> GeoPoint
 #endif
 public func FfiConverterTypeGeoPointF_lower(_ value: GeoPointF) -> RustBuffer {
     return FfiConverterTypeGeoPointF.lower(value)
+}
+
+
+/**
+ * The live wall texture from `Engine::render_live_canvas`: transparent where
+ * unpainted, laid on the wall plane at `frame`.
+ */
+public struct LiveCanvasImageF: Equatable, Hashable {
+    /**
+     * Frozen canvas frame the image lies in.
+     */
+    public var frame: CanvasFrameF
+    public var width: UInt32
+    public var height: UInt32
+    /**
+     * Premultiplied-alpha sRGB RGBA8, row-major from the top-left. Rows run
+     * from the +v (top) edge down, columns along +u.
+     */
+    public var rgba: Data
+    /**
+     * Wall-local rectangle the image covers, meters: left edge, bottom edge
+     * and size.
+     */
+    public var minU: Float
+    public var minV: Float
+    public var widthM: Float
+    public var heightM: Float
+    /**
+     * Image density chosen by the core.
+     */
+    public var pixelsPerMeter: Float
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Frozen canvas frame the image lies in.
+         */frame: CanvasFrameF, width: UInt32, height: UInt32, 
+        /**
+         * Premultiplied-alpha sRGB RGBA8, row-major from the top-left. Rows run
+         * from the +v (top) edge down, columns along +u.
+         */rgba: Data, 
+        /**
+         * Wall-local rectangle the image covers, meters: left edge, bottom edge
+         * and size.
+         */minU: Float, minV: Float, widthM: Float, heightM: Float, 
+        /**
+         * Image density chosen by the core.
+         */pixelsPerMeter: Float) {
+        self.frame = frame
+        self.width = width
+        self.height = height
+        self.rgba = rgba
+        self.minU = minU
+        self.minV = minV
+        self.widthM = widthM
+        self.heightM = heightM
+        self.pixelsPerMeter = pixelsPerMeter
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension LiveCanvasImageF: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLiveCanvasImageF: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LiveCanvasImageF {
+        return
+            try LiveCanvasImageF(
+                frame: FfiConverterTypeCanvasFrameF.read(from: &buf), 
+                width: FfiConverterUInt32.read(from: &buf), 
+                height: FfiConverterUInt32.read(from: &buf), 
+                rgba: FfiConverterData.read(from: &buf), 
+                minU: FfiConverterFloat.read(from: &buf), 
+                minV: FfiConverterFloat.read(from: &buf), 
+                widthM: FfiConverterFloat.read(from: &buf), 
+                heightM: FfiConverterFloat.read(from: &buf), 
+                pixelsPerMeter: FfiConverterFloat.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LiveCanvasImageF, into buf: inout [UInt8]) {
+        FfiConverterTypeCanvasFrameF.write(value.frame, into: &buf)
+        FfiConverterUInt32.write(value.width, into: &buf)
+        FfiConverterUInt32.write(value.height, into: &buf)
+        FfiConverterData.write(value.rgba, into: &buf)
+        FfiConverterFloat.write(value.minU, into: &buf)
+        FfiConverterFloat.write(value.minV, into: &buf)
+        FfiConverterFloat.write(value.widthM, into: &buf)
+        FfiConverterFloat.write(value.heightM, into: &buf)
+        FfiConverterFloat.write(value.pixelsPerMeter, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLiveCanvasImageF_lift(_ buf: RustBuffer) throws -> LiveCanvasImageF {
+    return try FfiConverterTypeLiveCanvasImageF.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLiveCanvasImageF_lower(_ value: LiveCanvasImageF) -> RustBuffer {
+    return FfiConverterTypeLiveCanvasImageF.lower(value)
 }
 
 
@@ -4647,6 +4786,30 @@ fileprivate struct FfiConverterOptionTypeGeoPointF: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeLiveCanvasImageF: FfiConverterRustBuffer {
+    typealias SwiftType = LiveCanvasImageF?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeLiveCanvasImageF.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeLiveCanvasImageF.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeVec2F: FfiConverterRustBuffer {
     typealias SwiftType = Vec2F?
 
@@ -5180,7 +5343,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_graffix_core_checksum_method_engine_can_undo() != 21960) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_graffix_core_checksum_method_engine_canvas_snapshot() != 40186) {
+    if (uniffi_graffix_core_checksum_method_engine_canvas_snapshot() != 34181) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_graffix_core_checksum_method_engine_cap() != 60757) {
@@ -5208,6 +5371,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_graffix_core_checksum_method_engine_redo() != 55529) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_graffix_core_checksum_method_engine_render_live_canvas() != 9249) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_graffix_core_checksum_method_engine_serialize_canvas() != 55633) {

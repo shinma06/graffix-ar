@@ -385,3 +385,51 @@ fn spray_color_id_maps_to_the_stored_palette_index() {
     assert_eq!(red, 3);
     assert_eq!(snap.strokes[0].color, colors[red].rgba);
 }
+
+#[test]
+fn live_canvas_texture_tracks_spray_and_edits() {
+    let e = locked_engine(2.0);
+    assert!(e.render_live_canvas().is_none(), "no paint yet");
+
+    // Painting shows up while the stroke is still in flight.
+    let mut images = Vec::new();
+    for i in 1..=6 {
+        let out = e.tick(input(v3(i as f32 * 0.05, 0.0, 2.0), true));
+        assert!(out.canvas_dirty);
+        let img = e.render_live_canvas().expect("in-flight paint is drawn");
+        assert_eq!(img.rgba.len(), (img.width * img.height * 4) as usize);
+        assert!((img.width as f32 / img.pixels_per_meter - img.width_m).abs() < 1e-3);
+        assert!((img.height as f32 / img.pixels_per_meter - img.height_m).abs() < 1e-3);
+        images.push(img);
+    }
+    // Rendering marks the canvas clean.
+    let out = e.tick(input(forward(), false));
+    assert!(out.canvas_dirty, "commit bumps the revision");
+    let live = e.render_live_canvas().unwrap();
+    assert!(!e.tick(input(forward(), false)).canvas_dirty);
+    assert!(live.rgba.chunks(4).any(|p| p[3] > 0));
+    assert_eq!(live.rgba[..4], [0, 0, 0, 0], "transparent margin");
+    assert!(live
+        .rgba
+        .chunks(4)
+        .all(|p| p[0] <= p[3] && p[1] <= p[3] && p[2] <= p[3]));
+
+    // Undo/redo/load re-render the same pixels as a fresh engine.
+    assert!(e.undo());
+    assert!(e.render_live_canvas().is_none());
+    assert!(e.redo());
+    let redone = e.render_live_canvas().unwrap();
+    assert_eq!(redone.rgba, live.rgba);
+
+    let e2 = Engine::new();
+    e2.load_canvas(e.serialize_canvas()).unwrap();
+    let loaded = e2.render_live_canvas().unwrap();
+    assert_eq!(loaded.rgba, live.rgba);
+    assert_eq!(
+        (loaded.min_u, loaded.min_v, loaded.width, loaded.height),
+        (live.min_u, live.min_v, live.width, live.height)
+    );
+
+    e.clear();
+    assert!(e.render_live_canvas().is_none());
+}
