@@ -230,30 +230,50 @@ final class WorkDetailUITests: XCTestCase {
     }
 
     /// 連続 2 回のスクリーンショットが一致するまで待つ（レンダリング完了）。
-    private func stableImage(of element: XCUIElement, timeout: TimeInterval = 10,
-                             file: StaticString = #filePath, line: UInt = #line) -> Data {
+    /// 遅い CI ランナーでは 1 回の撮影に数秒かかるので、時間切れでも最低
+    /// `minComparisons` 回は比較してから諦める。安定しなければ nil。
+    private func stableImage(of element: XCUIElement, timeout: TimeInterval,
+                             minComparisons: Int) -> Data? {
         let deadline = Date().addingTimeInterval(timeout)
         var last = element.screenshot().pngRepresentation
-        while Date() < deadline {
+        var comparisons = 0
+        while comparisons < minComparisons || Date() < deadline {
             Thread.sleep(forTimeInterval: 0.3)
             let next = element.screenshot().pngRepresentation
+            comparisons += 1
             if next == last { return next }
             last = next
         }
-        XCTFail("プレビューが安定しない", file: file, line: line)
-        return last
+        return nil
+    }
+
+    /// 安定したプレビュー画像。安定しなければテストを失敗させる。
+    private func stableImage(of element: XCUIElement,
+                             file: StaticString = #filePath, line: UInt = #line) -> Data {
+        let start = Date()
+        if let image = stableImage(of: element, timeout: 30, minComparisons: 5) { return image }
+        XCTFail("プレビューが安定しない（\(Int(Date().timeIntervalSince(start))) 秒）", file: file, line: line)
+        return element.screenshot().pngRepresentation
     }
 
     /// プレビューが `previous` から変わり、安定するまで待つ。
+    /// 描画中の撮影で安定判定に失敗しても、時間内（最低 `minAttempts` 回）は撮り直す。
     private func changedImage(of element: XCUIElement, from previous: Data, after action: String,
-                              timeout: TimeInterval = 10,
+                              timeout: TimeInterval = 60, minAttempts: Int = 3,
                               file: StaticString = #filePath, line: UInt = #line) -> Data {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            let image = stableImage(of: element, file: file, line: line)
+        let start = Date()
+        let deadline = start.addingTimeInterval(timeout)
+        var attempts = 0
+        var sawStable = false
+        while attempts < minAttempts || Date() < deadline {
+            attempts += 1
+            guard let image = stableImage(of: element, timeout: 10, minComparisons: 3) else { continue }
+            sawStable = true
             if image != previous { return image }
         }
-        XCTFail("プレビュー画像が更新されない: \(action)", file: file, line: line)
+        let elapsed = Date().timeIntervalSince(start)
+        let reason = sawStable ? "プレビュー画像が更新されない" : "プレビューが安定しない"
+        XCTFail("\(reason): \(action)（\(attempts) 回・\(Int(elapsed)) 秒）", file: file, line: line)
         return previous
     }
 
