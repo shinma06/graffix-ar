@@ -123,6 +123,8 @@ jobs:
         env:
           UDID: ${{ steps.sim.outputs.udid }}
         run: |
+          # The default `bash -e` shell has no pipefail; without it `| tee` hides xcodebuild's exit code.
+          set -o pipefail
           run_tests() {
             xcodebuild test \
               -project Graffix-AR.xcodeproj -scheme Graffix-AR \
