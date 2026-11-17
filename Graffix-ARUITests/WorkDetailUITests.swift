@@ -184,7 +184,8 @@ final class WorkDetailUITests: XCTestCase {
 
     // TEMP PROBE (revert before merge): verifies the CI retry / timeout path.
     func testZZProbe1HangOnce() {
-        let marker = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("probe-hang-once")
+        let host = ProcessInfo.processInfo.environment["SIMULATOR_HOST_HOME"] ?? NSTemporaryDirectory()
+        let marker = URL(fileURLWithPath: host).appendingPathComponent("probe-hang-once")
         if !FileManager.default.fileExists(atPath: marker.path) {
             FileManager.default.createFile(atPath: marker.path, contents: Data())
             Thread.sleep(forTimeInterval: 600)
