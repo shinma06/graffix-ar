@@ -192,11 +192,6 @@ final class WorkDetailUITests: XCTestCase {
         }
     }
 
-    // TEMP PROBE (revert before merge): a deterministic failure must still fail the job.
-    func testZZProbe2AlwaysFails() {
-        XCTFail("probe: deterministic failure")
-    }
-
     // MARK: - Navigation
 
     private func launchAndOpenWorksTab() {
