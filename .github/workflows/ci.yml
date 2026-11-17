@@ -109,17 +109,88 @@ jobs:
           xcrun simctl boot "$udid" || true
           xcrun simctl bootstatus "$udid" -b
       - name: UI tests (works detail, iOS 27 Simulator)
+        # The GitHub macOS simulator / XCUITest runner occasionally hangs (around
+        # app terminate/relaunch or an element query) or fails to launch before any
+        # test runs. Guards, all visible in this log and the uploaded .xcresult:
+        # - a test that runs past 4 min is killed as a failure (instead of the
+        #   runner's own ~5 min watchdog) and the remaining tests continue;
+        # - a failed test is re-run up to 2 more times (3 runs in total); it only
+        #   passes if one of its runs passes, so a deterministic failure still
+        #   fails the job, and every retry is reported by the summary step below;
+        # - if xcodebuild fails before any test has started, the simulator is
+        #   rebooted and the whole suite runs once more into a second .xcresult.
+        timeout-minutes: 40
+        env:
+          UDID: ${{ steps.sim.outputs.udid }}
         run: |
-          xcodebuild test \
-            -project Graffix-AR.xcodeproj -scheme Graffix-AR \
-            -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}" \
-            -derivedDataPath build/DerivedData-uitest \
-            -resultBundlePath build/UITests.xcresult \
-            CODE_SIGNING_ALLOWED=NO
+          run_tests() {
+            xcodebuild test \
+              -project Graffix-AR.xcodeproj -scheme Graffix-AR \
+              -destination "platform=iOS Simulator,id=$UDID" \
+              -derivedDataPath build/DerivedData-uitest \
+              -resultBundlePath "$1" \
+              -test-timeouts-enabled YES \
+              -default-test-execution-time-allowance 240 \
+              -maximum-test-execution-time-allowance 240 \
+              -retry-tests-on-failure -test-iterations 3 \
+              CODE_SIGNING_ALLOWED=NO 2>&1 | tee "$2"
+          }
+          status=0
+          run_tests build/UITests.xcresult build/uitest-1.log || status=$?
+          if [ "$status" -ne 0 ] && ! grep -q "^Test Case '.*' started" build/uitest-1.log; then
+            echo "::warning title=UI tests relaunched::xcodebuild test failed (exit $status) before any test started; rebooting the simulator and running the suite once more."
+            xcrun simctl shutdown "$UDID" || true
+            xcrun simctl boot "$UDID" || true
+            xcrun simctl bootstatus "$UDID" -b
+            status=0
+            run_tests build/UITests-relaunch.xcresult build/uitest-2.log || status=$?
+          fi
+          exit "$status"
+      - name: UI test summary (runs, retries, durations)
+        if: always() && steps.sim.outcome == 'success'
+        run: |
+          python3 - <<'EOF'
+          import glob, json, os, subprocess
+
+          def seconds(node):
+              d = node.get("durationInSeconds")
+              return f"{d:.1f} s" if isinstance(d, (int, float)) else node.get("duration", "?")
+
+          def cases(node):
+              if node.get("nodeType") == "Test Case":
+                  yield node
+              for child in node.get("children", []):
+                  yield from cases(child)
+
+          out = []
+          for bundle in sorted(glob.glob("build/*.xcresult")):
+              out += [f"### {os.path.basename(bundle)}", "",
+                      "| Test | Result | Duration | Runs |", "|---|---|---|---|"]
+              try:
+                  raw = subprocess.run(
+                      ["xcrun", "xcresulttool", "get", "test-results", "tests", "--path", bundle],
+                      check=True, capture_output=True, text=True).stdout
+                  nodes = json.loads(raw).get("testNodes", [])
+              except Exception as e:
+                  out += [f"| (could not read: {e}) | | | |", ""]
+                  continue
+              for case in (c for n in nodes for c in cases(n)):
+                  reps = [c for c in case.get("children", []) if c.get("nodeType") == "Repetition"]
+                  runs = "; ".join(f"{r.get('name', '?')}: {r.get('result', '?')} ({seconds(r)})"
+                                   for r in reps) or "1 run"
+                  out.append(f"| {case.get('name')} | {case.get('result')} | {seconds(case)} | {runs} |")
+                  if len(reps) > 1:
+                      print(f"::warning title=UI test retried::{case.get('name')} ran {len(reps)} times: {runs}")
+              out.append("")
+          text = "\n".join(out)
+          print(text)
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
+              f.write("## UI tests\n\n" + text + "\n")
+          EOF
       - name: Upload UI test results (.xcresult)
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: UITests-xcresult
-          path: build/UITests.xcresult
+          path: build/*.xcresult
           if-no-files-found: warn
