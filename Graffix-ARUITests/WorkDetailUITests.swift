@@ -182,6 +182,20 @@ final class WorkDetailUITests: XCTestCase {
         attachScreenshot("12-legacy-timelapse-finished")
     }
 
+    // TEMP PROBE (revert before merge): verifies the CI retry / timeout path.
+    func testZZProbe1HangOnce() {
+        let marker = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("probe-hang-once")
+        if !FileManager.default.fileExists(atPath: marker.path) {
+            FileManager.default.createFile(atPath: marker.path, contents: Data())
+            Thread.sleep(forTimeInterval: 600)
+        }
+    }
+
+    // TEMP PROBE (revert before merge): a deterministic failure must still fail the job.
+    func testZZProbe2AlwaysFails() {
+        XCTFail("probe: deterministic failure")
+    }
+
     // MARK: - Navigation
 
     private func launchAndOpenWorksTab() {
