@@ -109,17 +109,71 @@ jobs:
           xcrun simctl boot "$udid" || true
           xcrun simctl bootstatus "$udid" -b
       - name: UI tests (works detail, iOS 27 Simulator)
+        # The GitHub macOS simulator / XCUITest runner sometimes hangs (seen at
+        # `app.launch()` terminating the previous test's app instance) or dies
+        # before any test runs. Guards, every one visible in this log and in the
+        # uploaded .xcresult bundles (see the summary step):
+        # - a test running past 4 min is killed as a failure instead of waiting
+        #   for the runner's own ~5 min watchdog;
+        # - a test that fails is re-run by Xcode up to 2 more times and only
+        #   passes if a run passes; a test failing all 3 runs fails the job;
+        # - Xcode does not retry a test that timed out or whose runner died
+        #   (it ran once), so only those tests run once more in a second
+        #   xcodebuild (-only-testing) and must pass there; the job still fails
+        #   if any other test failed in the first run;
+        # - if xcodebuild fails before any test started, the simulator is
+        #   rebooted and the whole suite runs once more.
+        timeout-minutes: 45
+        env:
+          UDID: ${{ steps.sim.outputs.udid }}
         run: |
-          xcodebuild test \
-            -project Graffix-AR.xcodeproj -scheme Graffix-AR \
-            -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}" \
-            -derivedDataPath build/DerivedData-uitest \
-            -resultBundlePath build/UITests.xcresult \
-            CODE_SIGNING_ALLOWED=NO
+          # The default `bash -e` shell has no pipefail; without it `| tee` hides xcodebuild's exit code.
+          set -o pipefail
+          run_tests() {
+            bundle=$1 log=$2
+            shift 2
+            xcodebuild test \
+              -project Graffix-AR.xcodeproj -scheme Graffix-AR \
+              -destination "platform=iOS Simulator,id=$UDID" \
+              -derivedDataPath build/DerivedData-uitest \
+              -resultBundlePath "$bundle" \
+              -test-timeouts-enabled YES \
+              -default-test-execution-time-allowance 240 \
+              -maximum-test-execution-time-allowance 240 \
+              -retry-tests-on-failure -test-iterations 3 \
+              "$@" CODE_SIGNING_ALLOWED=NO 2>&1 | tee "$log"
+          }
+          status=0
+          run_tests build/UITests.xcresult build/uitest-1.log || status=$?
+          [ "$status" -eq 0 ] && exit 0
+          if ! grep -q "^Test Case '.*' started" build/uitest-1.log; then
+            echo "::warning title=UI tests relaunched::xcodebuild test failed (exit $status) before any test started; rebooting the simulator and running the whole suite once more."
+            xcrun simctl shutdown "$UDID" || true
+            xcrun simctl boot "$UDID" || true
+            xcrun simctl bootstatus "$UDID" -b
+            status=0
+            run_tests build/UITests-relaunch.xcresult build/uitest-2.log || status=$?
+            exit "$status"
+          fi
+          failed=$(python3 scripts/ci-uitest-results.py failed build/UITests.xcresult)
+          interrupted=$(python3 scripts/ci-uitest-results.py interrupted build/UITests.xcresult)
+          [ -n "$failed" ] && echo "::error title=UI tests failed::failed in all runs: ${failed//$'\n'/ }"
+          if [ -n "$interrupted" ]; then
+            echo "::warning title=UI tests re-run::timed out or runner died (ran once, not retried by Xcode); running once more: ${interrupted//$'\n'/ }"
+            only=()
+            for t in $interrupted; do only+=("-only-testing:$t"); done
+            rerun=0
+            run_tests build/UITests-rerun.xcresult build/uitest-rerun.log "${only[@]}" || rerun=$?
+            [ -z "$failed" ] && exit "$rerun"
+          fi
+          exit "$status"
+      - name: UI test summary (runs, retries, durations)
+        if: always() && steps.sim.outcome == 'success'
+        run: python3 scripts/ci-uitest-results.py summary build/*.xcresult
       - name: Upload UI test results (.xcresult)
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: UITests-xcresult
-          path: build/UITests.xcresult
+          path: build/*.xcresult
           if-no-files-found: warn
