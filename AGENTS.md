@@ -7,7 +7,7 @@ iOS app (Shibuya Graffix AR): move the phone like a spray can to paint digital g
 A Devin parent session delegates one task per child session, reviews the result and integrates it. Entire records the sessions.
 
 - One task → one child session → one branch `devin/<slug>` from `main` → one PR into `main`. Children never push to `main`, `master` or `develop`, never force-push and never merge: the parent session reviews and merges into `main` after both required checks are green.
-- This applies to every Devin session working on this repository, including sessions the parent did not start: no session merges a PR it created into `main`, even when CI is green. `main` only receives PRs whose two required checks are green and that the parent session has reviewed and merged.
+- No Devin session working on this repository, including sessions the parent did not start, merges a PR it created into `main`, even when CI is green. `main` only receives PRs whose two required checks are green and that the parent session has reviewed and merged.
 - A PR is ready when both `.github/workflows/ci.yml` jobs, `Rust core (Linux)` and `iOS app (Xcode)`, are green on its head. Fix real failures; never weaken a check.
 - Stay inside the files your task names; if you must touch others, keep it minimal and say so in the PR.
 - Product and design decisions the task and the repository do not settle go to the owner: stop and ask with the options instead of guessing.
