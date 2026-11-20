@@ -12,4 +12,5 @@
 | 必須 checks | `.github/workflows/ci.yml` の `Rust core (Linux)` と `iOS app (Xcode)`（macOS・最新安定版 Xcode） |
 | 開発 | Devin の親セッションが子セッションへ 1 タスクずつ委任し、レビュー・統合する。セッションは Entire に記録する。進め方は [AGENTS.md](../AGENTS.md)、旧運用は [legacy-ops](legacy-ops/README.md) |
 | 統合先 | 子 PR は `main` へ。親セッションがレビューし、必須 checks 2 件が緑のものを `main` にマージする |
+| 自己マージ禁止 | 子セッションも親セッションが起動していないセッションも含め、すべての Devin セッションは、自分が作った PR を自分で `main` にマージしない（CI が緑でも同じ）。`main` へ入るのは、必須 checks 2 件が緑で、親セッションがレビューしてマージした PR だけ |
 | 受入 | CI はビルド・コアのテスト・Simulator での作品詳細 UI テストまで。実機での AR（面検出・LiDAR 深度・描画の向き）と触覚は人が確認する |
